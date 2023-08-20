@@ -141,7 +141,13 @@ local function stringToTaggedText(str, params)
         else escaped = false end
     end
 
-    taggedText[#taggedText].text = table.concat(stringChunk)
+    if not tagStart then
+        taggedText[#taggedText].text = table.concat(stringChunk)
+    else
+        -- There was a start of a tag but it was never closed, so just treat is as regular text
+        local remainingText = string.sub(str, tagStart, -1)
+        taggedText[#taggedText].text = taggedText[#taggedText].text .. remainingText
+    end
     return taggedText
 end
 
@@ -161,7 +167,7 @@ local function stringToTaggedLines(str)
     end
 
     for _, line in ipairs(taggedLines) do
-        --print("[new line]")
+        print("[new line]")
         for _, taggedTextEntry in ipairs(line) do
             print("TEXT: " .. taggedTextEntry.text)
             for param, value in pairs(taggedTextEntry.params) do
@@ -232,8 +238,8 @@ end
 local font = love.graphics.newFont(15, "mono")
 local lines = makeStringKeepMaxWidth("splitting text into multiple lines to keep a max width :-)", font, 100)
 for index, value in ipairs(lines) do
-    print(value)
+    --print(value)
 end
 
-local testString = "This is a [[color: highlight]]test[[color: none;]] string.\nYou use \\[[these: tags]] to [[shake:100;color:highlight;]]tag[[color:none]] text[[shake:none]]."
+local testString = "This is a [[color: highlight;]]test[[color: none;]] string.\nYou use \\[[these: tags]] to [[shake:100;color:highlight;]]tag[[color:none]] text[[shake:none]]."
 stringToTaggedLines(testString)
