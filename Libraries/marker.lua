@@ -1,6 +1,6 @@
 local utf8 = require("utf8")
 
----@class TaggedTextChunk
+---@class MarkerTaggedTextChunk
 ---@field text string The string of this part of the full text
 ---@field params table A dictionary of all params and their values for this part of the full text
 
@@ -26,6 +26,7 @@ end
 ---@param sep string Single character seperator
 ---@return string[]
 local function split(str, sep)
+    if str == "" then return {""} end
     local strings = {}
     for match in string.gmatch(str, "([^" .. sep .. "]*)[" .. sep .. "]?") do
         strings[#strings+1] = match
@@ -100,7 +101,7 @@ end
 ---comment
 ---@param str string A string with no newlines
 ---@param params? table What params the string should already have
----@return TaggedTextChunk[] taggedText A table of tables containing the text and params of that part of the string
+---@return MarkerTaggedTextChunk[] taggedText A table of tables containing the text and params of that part of the string
 local function stringToTaggedText(str, params)
     params = params or {}
     local taggedText = {{params = params}}
@@ -152,7 +153,7 @@ local function stringToTaggedText(str, params)
 end
 
 ---@param str string
----@return TaggedTextChunk[][] taggedLines
+---@return MarkerTaggedTextChunk[][] taggedLines
 local function stringToTaggedLines(str)
     local strings = split(str, "\n")
     local taggedLines = {}
@@ -164,17 +165,6 @@ local function stringToTaggedLines(str)
         previousParams = taggedLine[#taggedLine].params
 
         taggedLines[#taggedLines+1] = taggedLine
-    end
-
-    for _, line in ipairs(taggedLines) do
-        print("[new line]")
-        for _, taggedTextEntry in ipairs(line) do
-            print("TEXT: " .. taggedTextEntry.text)
-            for param, value in pairs(taggedTextEntry.params) do
-                print(param .. " = " .. value)
-            end
-            print()
-        end
     end
 
     return taggedLines
@@ -206,12 +196,17 @@ end
 ---@param str string
 ---@param font love.Font
 ---@param maxWidth number
-local function makeStringKeepMaxWidth(str, font, maxWidth)
+---@param firstLineWidthUsedUp? number How much width has already been taken from the first line (reduce max width by it)
+---@return string[] lines
+local function makeStringKeepMaxWidth(str, font, maxWidth, firstLineWidthUsedUp)
+    firstLineWidthUsedUp = firstLineWidthUsedUp or 0
     local words = split(str, " ")
     local lines = {}
     local wordIndex = 1
     local lineIndex = 1
     while wordIndex <= #words do
+        local maxLineWidth = lineIndex == 1 and (maxWidth - firstLineWidthUsedUp) or (maxWidth)
+
         local word, trimmedPart = trimWordToMaxWidth(words[wordIndex], font, maxWidth)
         if trimmedPart then
             words[wordIndex] = word
@@ -219,10 +214,16 @@ local function makeStringKeepMaxWidth(str, font, maxWidth)
         end
 
         if not lines[lineIndex] then
-            lines[lineIndex] = word
+            if font:getWidth(word) > maxLineWidth then -- This can only happen if firstLineWidthUsedUp makes maxWidth too small
+                lines[lineIndex] = ""
+                lines[lineIndex + 1] = word
+                lineIndex = lineIndex + 1
+            else
+                lines[lineIndex] = word
+            end
         else
             local updatedLine = lines[lineIndex] .. " " .. word
-            if font:getWidth(updatedLine) > maxWidth then
+            if font:getWidth(updatedLine) > maxLineWidth then
                 lines[lineIndex + 1] = word
                 lineIndex = lineIndex + 1
             else
@@ -235,11 +236,71 @@ local function makeStringKeepMaxWidth(str, font, maxWidth)
     return lines
 end
 
+---@param taggedLines MarkerTaggedTextChunk[][]
+---@param font love.Font
+---@param maxWidth number
+local function makeTaggedLinesKeepMaxWidth(taggedLines, font, maxWidth)
+    local lineIndex = 1
+    while lineIndex <= #taggedLines do
+        local line = taggedLines[lineIndex]
+        local lineWidthUsedUp = 0
+
+        for chunkIndex = 1, #line do
+            local chunk = line[chunkIndex]
+            local splitChunkText = makeStringKeepMaxWidth(chunk.text, font, maxWidth, lineWidthUsedUp)
+
+            if #splitChunkText == 1 then -- there is room for more on this line
+                lineWidthUsedUp = lineWidthUsedUp + font:getWidth(splitChunkText[1])
+            else
+                chunk.text = splitChunkText[1] -- trim this chunk to whatever still fits
+                for i = 2, #splitChunkText do
+                    table.insert(taggedLines, lineIndex+1, {{text = splitChunkText[i], params = chunk.params}})
+                    lineIndex = lineIndex + 1
+                end
+
+                for remainingChunkIndex = chunkIndex + 1, #line do
+                    taggedLines[lineIndex][#taggedLines[lineIndex]+1] = line[remainingChunkIndex]
+                    line[remainingChunkIndex] = nil
+                end
+                if splitChunkText[1] == "" then line[chunkIndex] = nil end
+
+                lineIndex = lineIndex - 1
+                break
+            end
+        end
+        lineIndex = lineIndex + 1
+    end
+    return taggedLines
+end
+
 local font = love.graphics.newFont(15, "mono")
-local lines = makeStringKeepMaxWidth("splitting text into multiple lines to keep a max width :-)", font, 100)
-for index, value in ipairs(lines) do
-    --print(value)
+local untaggedText = "splitting text into multiple lines to keep a max width :-)"
+local taggedText = "[[typewriter:1]]splitting [[color:highlight]]text[[color:none;]] into [[wobble:5]]multiple lines[[wobble:unset]] to keep a max width :-)"
+local lines1 = makeStringKeepMaxWidth(untaggedText, font, 100)
+for index, value in ipairs(lines1) do
+    print(value)
+end
+print("\n[NEXT]\n")
+local lines3 = makeTaggedLinesKeepMaxWidth(stringToTaggedLines(taggedText), font, 100)
+for _, line in ipairs(lines3) do
+    local str = ""
+    for _, chunk in ipairs(line) do
+       str = str .. chunk.text
+    end
+    print(str)
+end
+print("\n[AND TAGGED:]\n")
+for _, line in ipairs(lines3) do
+    print()
+    print("NEW LINE")
+    for _, chunk in ipairs(line) do
+       print("TEXT: " .. chunk.text)
+       print("PARAMS:")
+       for param, value in pairs(chunk.params) do
+            print("  " .. param .. " = " .. value)
+       end
+    end
 end
 
 local testString = "This is a [[color: highlight;]]test[[color: none;]] string.\nYou use \\[[these: tags]] to [[shake:100;color:highlight;]]tag[[color:none]] text[[shake:none]]."
-stringToTaggedLines(testString)
+--stringToTaggedLines(testString)
