@@ -1,8 +1,17 @@
 local utf8 = require("utf8")
 
+local marker = {}
+
 ---@class MarkerTaggedTextChunk
 ---@field text string The string of this part of the full text
 ---@field params table A dictionary of all params and their values for this part of the full text
+
+---@class MarkedText
+---@field rawText string The input string used for the MarkedText
+---@field maxWidth number
+---@field font love.Font
+---@field textChunks string[][] Input string split into chunks in lines
+---@field params table<string, table> The params and the addresses of the affected chunks, with the value of the param stored with each address
 
 local openingBracketCode = utf8.codepoint("[")
 local closingBracketCode = utf8.codepoint("]")
@@ -273,6 +282,62 @@ local function makeTaggedLinesKeepMaxWidth(taggedLines, font, maxWidth)
     return taggedLines
 end
 
+---@param str string Input string
+---@param font love.Font Font used
+---@param maxWidth? number Max width for the text to keep
+---@return table textChunks
+---@return table params
+local function stringToStyledTextGuts(str, font, maxWidth)
+    maxWidth = maxWidth or math.huge
+    local taggedLines = makeTaggedLinesKeepMaxWidth(stringToTaggedLines(str), font, maxWidth)
+
+    local textChunks = {}
+    local params = {}
+
+    for lineIndex = 1, #taggedLines do
+        local line = taggedLines[lineIndex]
+        textChunks[lineIndex] = {}
+        for chunkIndex = 1, #line do
+            local chunk = line[chunkIndex]
+            textChunks[lineIndex][chunkIndex] = chunk.text
+
+            for param, value in pairs(chunk.params) do
+                local address = {lineIndex,chunkIndex}
+                address.value = value
+                address.desynced = false -- todo
+                if not params[param] then
+                    params[param] = {address}
+                else
+                    params[param][#params[param]+1] = address
+                end
+            end
+        end
+    end
+
+    return textChunks, params
+end
+
+---@param str string? String used for the text
+---@param font love.Font? Font used for the text
+---@param maxWidth number? Max width for the text to keep
+---@return MarkedText
+function marker.newMarkedText(str, font, maxWidth)
+    str = str or ""
+    font = font or love.graphics.newFont(15, "mono")
+    maxWidth = maxWidth or math.huge
+
+    local textChunks, params = stringToStyledTextGuts(str, font, maxWidth)
+
+    local markedText = {}
+    markedText.rawText = str
+    markedText.font = font
+    markedText.maxWidth = maxWidth
+    markedText.textChunks = textChunks
+    markedText.params = params
+
+    return markedText
+end
+
 local font = love.graphics.newFont(15, "mono")
 local untaggedText = "splitting text into multiple lines to keep a max width :-)"
 local taggedText = "[[typewriter:1]]splitting [[color:highlight]]text[[color:none;]] into [[wobble:5]]multiple lines[[wobble:unset]] to keep a max width :-)"
@@ -281,26 +346,27 @@ for index, value in ipairs(lines1) do
     print(value)
 end
 print("\n[NEXT]\n")
-local lines3 = makeTaggedLinesKeepMaxWidth(stringToTaggedLines(taggedText), font, 100)
-for _, line in ipairs(lines3) do
-    local str = ""
-    for _, chunk in ipairs(line) do
-       str = str .. chunk.text
+local markedText = marker.newMarkedText(taggedText, font, 100)
+
+for _, line in ipairs(markedText.textChunks) do
+    local lineStr = ""
+    for chunkIndex, chunk in ipairs(line) do
+        lineStr = lineStr .. chunkIndex .. chunk
     end
-    print(str)
+    print(lineStr)
 end
-print("\n[AND TAGGED:]\n")
-for _, line in ipairs(lines3) do
+
+print("\n[AND TAGS]\n")
+
+for key, addresses in pairs(markedText.params) do
+    print(key)
+    for _, address in ipairs(addresses) do
+        print("[" .. address[1] .. ", " .. address[2] .. "]: " .. address.value)
+    end
     print()
-    print("NEW LINE")
-    for _, chunk in ipairs(line) do
-       print("TEXT: " .. chunk.text)
-       print("PARAMS:")
-       for param, value in pairs(chunk.params) do
-            print("  " .. param .. " = " .. value)
-       end
-    end
 end
+
+
 
 local testString = "This is a [[color: highlight;]]test[[color: none;]] string.\nYou use \\[[these: tags]] to [[shake:100;color:highlight;]]tag[[color:none]] text[[shake:none]]."
 --stringToTaggedLines(testString)
