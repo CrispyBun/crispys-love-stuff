@@ -17,7 +17,8 @@ local marker = {}
 ---@field y number Y position to draw the text at
 ---@field textAlign string How to align the text horizontally
 ---@field verticalAlign string How to align the text vertically
----@field alignInBox boolean If true, won't align to the X coordinate but according to the max width
+---@field alignInBox boolean If true, won't align to the coordinates but according to the max width
+---@field boxHeight number The height to use (to be used alongside alignInBox set to true)
 ---@field draw fun() Draws the text
 ---@field getHeight fun(): number Gets the full height of the string
 
@@ -357,7 +358,7 @@ function drawFunctions.left(markedText, horizontalAlign)
 
     local lineHeight = font:getHeight()
 
-    local fullHeight = markedText.getHeight()
+    local fullHeight = markedText.getHeight() - markedText.boxHeight
     local verticalAlign = verticalAlignEnum[markedText.verticalAlign] or -1
     local yOffset = fullHeight / 2 + (fullHeight / 2) * verticalAlign
     y = y - yOffset
@@ -429,6 +430,7 @@ function marker.newMarkedText(str, font, maxWidth, x, y, textAlign, verticalAlig
     markedText.textAlign = textAlign
     markedText.verticalAlign = verticalAlign
     markedText.alignInBox = alignInBox
+    markedText.boxHeight = 0
 
     markedText.getHeight = function ()
         local lineHeight = markedText.font:getHeight()
