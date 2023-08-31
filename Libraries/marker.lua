@@ -12,6 +12,14 @@ local marker = {}
 ---@field font love.Font
 ---@field textChunks string[][] Input string split into chunks in lines
 ---@field params table<string, table> The params and the addresses of the affected chunks, with the value of the param stored with each address
+---
+---@field x number X position to draw the text at
+---@field y number Y position to draw the text at
+---@field textAlign string How to align the text horizontally
+---@field verticalAlign string How to align the text vertically
+---@field alignInBox boolean If true, won't align to the X coordinate but according to the max width
+---@field draw fun() Draws the text
+---@field getHeight fun(): number Gets the full height of the string
 
 local openingBracketCode = utf8.codepoint("[")
 local closingBracketCode = utf8.codepoint("]")
@@ -181,6 +189,9 @@ end
 
 local function trimWordToMaxWidth(str, font, maxWidth)
     local trimmedChars = {}
+
+    if str == "" then return "", nil end
+
     while font:getWidth(str) > maxWidth do
 
         local byteoffset = utf8.offset(str, -1)
@@ -223,7 +234,8 @@ local function makeStringKeepMaxWidth(str, font, maxWidth, firstLineWidthUsedUp)
         end
 
         if not lines[lineIndex] then
-            if font:getWidth(word) > maxLineWidth then -- This can only happen if firstLineWidthUsedUp makes maxWidth too small
+            local wordWidth = font:getWidth(word)
+            if wordWidth > maxLineWidth and wordWidth <= maxWidth and word ~= "" then -- This can only happen if firstLineWidthUsedUp makes maxWidth too small
                 lines[lineIndex] = ""
                 lines[lineIndex + 1] = word
                 lineIndex = lineIndex + 1
@@ -289,7 +301,8 @@ end
 ---@return table params
 local function stringToStyledTextGuts(str, font, maxWidth)
     maxWidth = maxWidth or math.huge
-    local taggedLines = makeTaggedLinesKeepMaxWidth(stringToTaggedLines(str), font, maxWidth)
+    local taggedLines = stringToTaggedLines(str)
+    taggedLines = makeTaggedLinesKeepMaxWidth(taggedLines, font, maxWidth)
 
     local textChunks = {}
     local params = {}
@@ -317,14 +330,91 @@ local function stringToStyledTextGuts(str, font, maxWidth)
     return textChunks, params
 end
 
----@param str string? String used for the text
----@param font love.Font? Font used for the text
----@param maxWidth number? Max width for the text to keep
+local verticalAlignEnum = {
+    top = -1,
+    bottom = 1,
+    middle = 0,
+    center = 0
+}
+
+local function getChunkLineWidth(line, font)
+    local width = 0
+    for chunkIndex = 1, #line do
+        local chunk = line[chunkIndex]
+        width = width + font:getWidth(chunk)
+    end
+    return width
+end
+
+local drawFunctions = {}
+function drawFunctions.left(markedText, horizontalAlign)
+    local textChunks = markedText.textChunks
+    local font = markedText.font
+    local x = markedText.x
+    local y = markedText.y
+
+    horizontalAlign = horizontalAlign or -1
+
+    local lineHeight = font:getHeight()
+
+    local fullHeight = markedText.getHeight()
+    local verticalAlign = verticalAlignEnum[markedText.verticalAlign] or -1
+    local yOffset = fullHeight / 2 + (fullHeight / 2) * verticalAlign
+    y = y - yOffset
+
+    local ignoreAlignInBox = false
+    if (markedText.maxWidth == math.huge or markedText.maxWidth < 0) and markedText.alignInBox then
+        horizontalAlign = -1
+        ignoreAlignInBox = true
+    end
+    if markedText.alignInBox and not ignoreAlignInBox then
+        local halfMaxWidth = markedText.maxWidth / 2
+        local xOffset = halfMaxWidth + halfMaxWidth * horizontalAlign
+        x = x + xOffset
+    end
+
+    for lineIndex = 1, #textChunks do
+        local line = textChunks[lineIndex]
+        local halfLineWidth = getChunkLineWidth(line, font) / 2
+        local lineOffset = halfLineWidth + halfLineWidth * horizontalAlign
+
+        local drawX = math.floor(x - lineOffset)
+        local drawY = math.floor(y + lineHeight * (lineIndex-1))
+        for chunkIndex = 1, #line do
+            local chunk = line[chunkIndex]
+            love.graphics.print(chunk, font, drawX, drawY)
+            drawX = drawX + font:getWidth(chunk)
+        end
+    end
+end
+function drawFunctions.right(markedText)
+    return drawFunctions.left(markedText, 1)
+end
+function drawFunctions.center(markedText)
+    return drawFunctions.left(markedText, 0)
+end
+function drawFunctions.middle(markedText)
+    return drawFunctions.center(markedText)
+end
+
+---@param str? string String used for the text
+---@param font? love.Font Font used for the text
+---@param maxWidth? number Max width for the text to keep (Default is no max width)
+---@param x? number X position of the text (Default is 0)
+---@param y? number Y position of the text (Default is 0)
+---@param textAlign? string How to align the text horizontally ("left", "right", "center") (Default is left)
+---@param verticalAlign? string How to align the text vertically ("top", "bottom", "middle")
+---@param alignInBox? boolean If true, won't align to the X coordinate but according to the max width
 ---@return MarkedText
-function marker.newMarkedText(str, font, maxWidth)
+function marker.newMarkedText(str, font, maxWidth, x, y, textAlign, verticalAlign, alignInBox)
     str = str or ""
     font = font or love.graphics.newFont(15, "mono")
     maxWidth = maxWidth or math.huge
+    x = x or 0
+    y = y or 0
+    textAlign = textAlign or "left"
+    verticalAlign = verticalAlign or "top"
+    alignInBox = alignInBox or false
 
     local textChunks, params = stringToStyledTextGuts(str, font, maxWidth)
 
@@ -334,39 +424,54 @@ function marker.newMarkedText(str, font, maxWidth)
     markedText.maxWidth = maxWidth
     markedText.textChunks = textChunks
     markedText.params = params
+    markedText.x = x
+    markedText.y = y
+    markedText.textAlign = textAlign
+    markedText.verticalAlign = verticalAlign
+    markedText.alignInBox = alignInBox
+
+    markedText.getHeight = function ()
+        local lineHeight = markedText.font:getHeight()
+        return #markedText.textChunks * lineHeight
+    end
+
+    markedText.draw = function ()
+        if drawFunctions[markedText.textAlign] then
+            drawFunctions[markedText.textAlign](markedText)
+        end
+    end
 
     return markedText
 end
 
-local font = love.graphics.newFont(15, "mono")
-local untaggedText = "splitting text into multiple lines to keep a max width :-)"
-local taggedText = "[[typewriter:1]]splitting [[color:highlight]]text[[color:none;]] into [[wobble:5]]multiple lines[[wobble:unset]] to keep a max width :-)"
-local lines1 = makeStringKeepMaxWidth(untaggedText, font, 100)
-for index, value in ipairs(lines1) do
-    print(value)
-end
-print("\n[NEXT]\n")
-local markedText = marker.newMarkedText(taggedText, font, 100)
+-- local font = love.graphics.newFont(15, "mono")
+-- local untaggedText = "splitting text into multiple lines to keep a max width :-)"
+-- local taggedText = "[[typewriter:1]]splitting [[color:highlight]]text[[color:none;]] into [[wobble:5]]multiple lines[[wobble:unset]] to keep a max width :-)"
+-- local lines1 = makeStringKeepMaxWidth(untaggedText, font, 100)
+-- for index, value in ipairs(lines1) do
+--     print(value)
+-- end
+-- print("\n[NEXT]\n")
+-- local markedText = marker.newMarkedText(taggedText, font, 100)
 
-for _, line in ipairs(markedText.textChunks) do
-    local lineStr = ""
-    for chunkIndex, chunk in ipairs(line) do
-        lineStr = lineStr .. chunkIndex .. chunk
-    end
-    print(lineStr)
-end
+-- for _, line in ipairs(markedText.textChunks) do
+--     local lineStr = ""
+--     for chunkIndex, chunk in ipairs(line) do
+--         lineStr = lineStr .. chunkIndex .. chunk
+--     end
+--     print(lineStr)
+-- end
 
-print("\n[AND TAGS]\n")
+-- print("\n[AND TAGS]\n")
 
-for key, addresses in pairs(markedText.params) do
-    print(key)
-    for _, address in ipairs(addresses) do
-        print("[" .. address[1] .. ", " .. address[2] .. "]: " .. address.value)
-    end
-    print()
-end
-
-
+-- for key, addresses in pairs(markedText.params) do
+--     print(key)
+--     for _, address in ipairs(addresses) do
+--         print("[" .. address[1] .. ", " .. address[2] .. "]: " .. address.value)
+--     end
+--     print()
+-- end
 
 local testString = "This is a [[color: highlight;]]test[[color: none;]] string.\nYou use \\[[these: tags]] to [[shake:100;color:highlight;]]tag[[color:none]] text[[shake:none]]."
---stringToTaggedLines(testString)
+
+return marker
