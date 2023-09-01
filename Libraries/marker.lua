@@ -236,7 +236,7 @@ local function makeStringKeepMaxWidth(str, font, maxWidth, firstLineWidthUsedUp)
 
         if not lines[lineIndex] then
             local wordWidth = font:getWidth(word)
-            if wordWidth > maxLineWidth and wordWidth <= maxWidth and word ~= "" then -- This can only happen if firstLineWidthUsedUp makes maxWidth too small
+            if wordWidth > maxLineWidth and firstLineWidthUsedUp > 0 and word ~= "" then -- This can only happen if firstLineWidthUsedUp makes maxWidth too small
                 lines[lineIndex] = ""
                 lines[lineIndex + 1] = word
                 lineIndex = lineIndex + 1
