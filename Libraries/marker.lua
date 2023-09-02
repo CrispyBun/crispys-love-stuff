@@ -2,6 +2,46 @@ local utf8 = require("utf8")
 
 local marker = {}
 
+local textColors = {
+    default = {1,1,1},
+    highlight = {1,0.4,0.3}
+}
+
+local textEffectOrder = {}
+table.insert(textEffectOrder, "color")
+table.insert(textEffectOrder, "shake")
+
+local split
+local function splitParamValue(value)
+    return split(value, ",")
+end
+
+local textEffects = {}
+---@param effectText {[1]: MarkerEffectTextChunk, [2]: string}[]
+function textEffects.color(effectText)
+    for index = 1, #effectText do
+        local chunk = effectText[index][1]
+        local paramValue = effectText[index][2]
+
+        local color = textColors[paramValue] or textColors.default
+        chunk.color = color
+    end
+end
+---@param effectText {[1]: MarkerEffectTextChunk, [2]: string}[]
+function textEffects.shake(effectText)
+    local shakeX = love.math.random()
+    local shakeY = love.math.random()
+    for index = 1, #effectText do
+        local chunk = effectText[index][1]
+        local paramValue = effectText[index][2]
+
+        local value = (tonumber(splitParamValue(paramValue)[1]) or 1)
+        local shakeAmount = math.floor(value * 5 + 0.5)
+        chunk.xOffset = chunk.xOffset + shakeX * shakeAmount
+        chunk.yOffset = chunk.yOffset + shakeY * shakeAmount
+    end
+end
+
 ---@class MarkerTaggedTextChunk
 ---@field text string The string of this part of the full text
 ---@field params table A dictionary of all params and their values for this part of the full text
@@ -21,6 +61,12 @@ local marker = {}
 ---@field boxHeight number The height to use (to be used alongside alignInBox set to true)
 ---@field draw fun() Draws the text
 ---@field getHeight fun(): number Gets the full height of the string
+
+---@class MarkerEffectTextChunk
+---@field text string The text of the chunk
+---@field color number[] The color of the chunk
+---@field xOffset number Offset of the chunk on the X axis
+---@field yOffset number Offset of the chunk on the Y axis
 
 local openingBracketCode = utf8.codepoint("[")
 local closingBracketCode = utf8.codepoint("]")
@@ -43,7 +89,7 @@ end
 ---@param str string Input string
 ---@param sep string Single character seperator
 ---@return string[]
-local function split(str, sep)
+function split(str, sep)
     if str == "" then return {""} end
     local strings = {}
     for match in string.gmatch(str, "([^" .. sep .. "]*)[" .. sep .. "]?") do
@@ -338,10 +384,10 @@ local verticalAlignEnum = {
     center = 0
 }
 
-local function getChunkLineWidth(line, font)
+local function getEffectChunkLineWidth(line, font)
     local width = 0
     for chunkIndex = 1, #line do
-        local chunk = line[chunkIndex]
+        local chunk = line[chunkIndex].text
         width = width + font:getWidth(chunk)
     end
     return width
@@ -374,19 +420,61 @@ function drawFunctions.left(markedText, horizontalAlign)
         x = x + xOffset
     end
 
+    -- Prepare table to be passed into effects
+    local effectTextChunks = {}
     for lineIndex = 1, #textChunks do
         local line = textChunks[lineIndex]
-        local halfLineWidth = getChunkLineWidth(line, font) / 2
+        effectTextChunks[lineIndex] = {}
+
+        for chunkIndex = 1, #line do
+            local text = line[chunkIndex]
+
+            ---@type MarkerEffectTextChunk
+            local effectChunk = {
+                text = text,
+                color = textColors.default,
+                xOffset = 0,
+                yOffset = 0
+            }
+            effectTextChunks[lineIndex][chunkIndex] = effectChunk
+        end
+    end
+
+    -- Run the effects
+    for effectIndex = 1, #textEffectOrder do
+        local effect = textEffectOrder[effectIndex]
+        local addresses = markedText.params[effect]
+        if addresses then
+            local chunks = {}
+            for addressIndex = 1, #addresses do
+                local address = addresses[addressIndex]
+                local lineIndex = address[1]
+                local chunkIndex = address[2]
+                local value = address.value
+
+                local chunk = effectTextChunks[lineIndex][chunkIndex]
+                chunks[#chunks+1] = {chunk, value}
+            end
+            textEffects[effect](chunks)
+        end
+    end
+
+    local prevColorR, prevColorG, prevColorB, prevColorA = love.graphics.getColor()
+    for lineIndex = 1, #effectTextChunks do
+        local line = effectTextChunks[lineIndex]
+        local halfLineWidth = getEffectChunkLineWidth(line, font) / 2
         local lineOffset = halfLineWidth + halfLineWidth * horizontalAlign
 
         local drawX = math.floor(x - lineOffset)
         local drawY = math.floor(y + lineHeight * (lineIndex-1))
         for chunkIndex = 1, #line do
             local chunk = line[chunkIndex]
-            love.graphics.print(chunk, font, drawX, drawY)
-            drawX = drawX + font:getWidth(chunk)
+            love.graphics.setColor(chunk.color)
+            love.graphics.print(chunk.text, font, drawX + chunk.xOffset, drawY + chunk.yOffset)
+            drawX = drawX + font:getWidth(chunk.text)
         end
     end
+    love.graphics.setColor(prevColorR, prevColorG, prevColorB, prevColorA)
 end
 function drawFunctions.right(markedText)
     return drawFunctions.left(markedText, 1)
