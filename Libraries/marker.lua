@@ -4,7 +4,11 @@ local marker = {}
 
 local textColors = {
     default = {1,1,1},
-    highlight = {1,0.4,0.3}
+    highlight = {1,0.4,0.3},
+
+    red = {1,0,0},
+    green = {0,1,0},
+    blue = {0,0,1}
 }
 
 local textEffectOrder = {}
@@ -18,7 +22,7 @@ end
 
 local textEffects = {}
 ---@param effectText {[1]: MarkerEffectTextChunk, [2]: string}[]
-function textEffects.color(effectText)
+function textEffects.color(effectText, time)
     for index = 1, #effectText do
         local chunk = effectText[index][1]
         local paramValue = effectText[index][2]
@@ -28,15 +32,24 @@ function textEffects.color(effectText)
     end
 end
 ---@param effectText {[1]: MarkerEffectTextChunk, [2]: string}[]
-function textEffects.shake(effectText)
-    local shakeX = love.math.random()
-    local shakeY = love.math.random()
+function textEffects.shake(effectText, time)
+    local seed = 1201
     for index = 1, #effectText do
         local chunk = effectText[index][1]
         local paramValue = effectText[index][2]
 
-        local value = (tonumber(splitParamValue(paramValue)[1]) or 1)
-        local shakeAmount = math.floor(value * 5 + 0.5)
+        local values = splitParamValue(paramValue)
+        local speed = (tonumber(values[1]) or 1)
+        local intensity = (tonumber(values[2]) or 1)
+
+        local shakeAmount = math.floor(intensity * 5)
+        local speedSeeder = math.floor(time * speed * 25) + seed
+
+        love.math.setRandomSeed(speedSeeder)
+        local shakeX = love.math.random()
+        love.math.setRandomSeed(speedSeeder+1)
+        local shakeY = love.math.random()
+
         chunk.xOffset = chunk.xOffset + shakeX * shakeAmount
         chunk.yOffset = chunk.yOffset + shakeY * shakeAmount
     end
@@ -52,6 +65,7 @@ end
 ---@field font love.Font
 ---@field textChunks string[][] Input string split into chunks in lines
 ---@field params table<string, table> The params and the addresses of the affected chunks, with the value of the param stored with each address
+---@field time number Timer for effects dependant on it
 ---
 ---@field x number X position to draw the text at
 ---@field y number Y position to draw the text at
@@ -59,6 +73,7 @@ end
 ---@field verticalAlign string How to align the text vertically
 ---@field alignInBox boolean If true, won't align to the coordinates but according to the max width
 ---@field boxHeight number The height to use (to be used alongside alignInBox set to true)
+---@field update fun(dt: number) Updates the text to be able to have animated effects
 ---@field draw fun() Draws the text
 ---@field getHeight fun(): number Gets the full height of the string
 
@@ -396,6 +411,7 @@ end
 local drawFunctions = {}
 function drawFunctions.left(markedText, horizontalAlign)
     local textChunks = markedText.textChunks
+    local time = markedText.time
     local font = markedText.font
     local x = markedText.x
     local y = markedText.y
@@ -455,7 +471,7 @@ function drawFunctions.left(markedText, horizontalAlign)
                 local chunk = effectTextChunks[lineIndex][chunkIndex]
                 chunks[#chunks+1] = {chunk, value}
             end
-            textEffects[effect](chunks)
+            textEffects[effect](chunks, time)
         end
     end
 
@@ -520,9 +536,15 @@ function marker.newMarkedText(str, font, maxWidth, x, y, textAlign, verticalAlig
     markedText.alignInBox = alignInBox
     markedText.boxHeight = 0
 
+    markedText.time = 0
+
     markedText.getHeight = function ()
         local lineHeight = markedText.font:getHeight()
         return #markedText.textChunks * lineHeight
+    end
+
+    markedText.update = function (dt)
+        markedText.time = markedText.time + dt
     end
 
     markedText.draw = function ()
