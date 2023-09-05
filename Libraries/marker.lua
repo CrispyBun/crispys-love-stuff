@@ -4,11 +4,10 @@ local marker = {}
 
 marker.textColors = {
     default = {1,1,1},
-    highlight = {1,0.4,0.3},
 
-    red = {1,0,0},
-    green = {0,1,0},
-    blue = {0,0,1}
+    red = {1,0.4,0.3},
+    green = {0.4,0.8,0.3},
+    blue = {0.3,0.4,1},
 }
 
 local split
@@ -28,8 +27,31 @@ function textEffects.color(effectText, time)
     end
 end
 ---@param effectText {[1]: MarkerEffectTextChunk, [2]: string}[]
+function textEffects.random_color(effectText, time)
+    local seed = 328 -- + #effectText
+    local oldSeed = love.math.getRandomSeed()
+
+    local colors = {}
+    for _, v in pairs(marker.textColors) do
+        colors[#colors+1] = v
+    end
+
+    for index = 1, #effectText do
+        local chunk = effectText[index][1]
+        local paramValue = effectText[index][2]
+
+        love.math.setRandomSeed(seed + index)
+        local colorIndex = love.math.random(#colors)
+        love.math.setRandomSeed(oldSeed)
+
+        local color = colors[colorIndex]
+        chunk.color = color
+    end
+end
+---@param effectText {[1]: MarkerEffectTextChunk, [2]: string}[]
 function textEffects.shake(effectText, time)
     local seed = 1201
+    local oldSeed = love.math.getRandomSeed()
     for index = 1, #effectText do
         local chunk = effectText[index][1]
         local paramValue = effectText[index][2]
@@ -37,14 +59,22 @@ function textEffects.shake(effectText, time)
         local values = splitParamValue(paramValue)
         local speed = (tonumber(values[1]) or 1)
         local intensity = (tonumber(values[2]) or 1)
+        local chaotic = values[3]
 
         local shakeAmount = math.floor(intensity * 5)
         local speedSeeder = math.floor(time * speed * 25) + seed
 
-        love.math.setRandomSeed(speedSeeder)
-        local shakeX = love.math.random() - 0.5
-        love.math.setRandomSeed(speedSeeder+1)
-        local shakeY = love.math.random() - 0.5
+        local shakeX, shakeY
+        if chaotic then
+            shakeX = love.math.random() - 0.5
+            shakeY = love.math.random() - 0.5
+        else
+            love.math.setRandomSeed(speedSeeder)
+            shakeX = love.math.random() - 0.5
+            love.math.setRandomSeed(speedSeeder+1)
+            shakeY = love.math.random() - 0.5
+            love.math.setRandomSeed(oldSeed)
+        end
 
         chunk.xOffset = chunk.xOffset + shakeX * shakeAmount
         chunk.yOffset = chunk.yOffset + shakeY * shakeAmount
