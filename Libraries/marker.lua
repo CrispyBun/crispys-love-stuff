@@ -14,6 +14,7 @@ local textColors = {
 local textEffectOrder = {}
 table.insert(textEffectOrder, "color")
 table.insert(textEffectOrder, "shake")
+table.insert(textEffectOrder, "wiggle")
 
 local split
 local function splitParamValue(value)
@@ -46,12 +47,27 @@ function textEffects.shake(effectText, time)
         local speedSeeder = math.floor(time * speed * 25) + seed
 
         love.math.setRandomSeed(speedSeeder)
-        local shakeX = love.math.random()
+        local shakeX = love.math.random() - 0.5
         love.math.setRandomSeed(speedSeeder+1)
-        local shakeY = love.math.random()
+        local shakeY = love.math.random() - 0.5
 
         chunk.xOffset = chunk.xOffset + shakeX * shakeAmount
         chunk.yOffset = chunk.yOffset + shakeY * shakeAmount
+    end
+end
+---@param effectText {[1]: MarkerEffectTextChunk, [2]: string}[]
+function textEffects.wiggle(effectText, time)
+    for index = 1, #effectText do
+        local chunk = effectText[index][1]
+        local paramValue = effectText[index][2]
+
+        local values = splitParamValue(paramValue)
+        local speed = (tonumber(values[1]) or 1)
+        local intensity = (tonumber(values[2]) or 1)
+
+        local offset = math.sin(time * speed * 10)
+
+        chunk.yOffset = chunk.yOffset + offset * intensity
     end
 end
 
