@@ -2,7 +2,7 @@ local utf8 = require("utf8")
 
 local marker = {}
 
-local textColors = {
+marker.textColors = {
     default = {1,1,1},
     highlight = {1,0.4,0.3},
 
@@ -10,11 +10,6 @@ local textColors = {
     green = {0,1,0},
     blue = {0,0,1}
 }
-
-local textEffectOrder = {}
-table.insert(textEffectOrder, "color")
-table.insert(textEffectOrder, "shake")
-table.insert(textEffectOrder, "wiggle")
 
 local split
 local function splitParamValue(value)
@@ -28,7 +23,7 @@ function textEffects.color(effectText, time)
         local chunk = effectText[index][1]
         local paramValue = effectText[index][2]
 
-        local color = textColors[paramValue] or textColors.default
+        local color = marker.textColors[paramValue] or marker.textColors.default
         chunk.color = color
     end
 end
@@ -464,7 +459,7 @@ function drawFunctions.left(markedText, horizontalAlign)
             ---@type MarkerEffectTextChunk
             local effectChunk = {
                 text = text,
-                color = textColors.default,
+                color = marker.textColors.default,
                 xOffset = 0,
                 yOffset = 0
             }
@@ -473,10 +468,8 @@ function drawFunctions.left(markedText, horizontalAlign)
     end
 
     -- Run the effects
-    for effectIndex = 1, #textEffectOrder do
-        local effect = textEffectOrder[effectIndex]
-        local addresses = markedText.params[effect]
-        if addresses then
+    for effect, addresses in pairs(markedText.params) do
+        if textEffects[effect] then
             local chunks = {}
             for addressIndex = 1, #addresses do
                 local address = addresses[addressIndex]
