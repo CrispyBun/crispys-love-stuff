@@ -26,21 +26,26 @@ function textEffects.color(effectText, time)
         chunk.color = color
     end
 end
+local randomColorSeed = os.time() + 328;
 ---@param effectText {[1]: MarkerEffectTextChunk, [2]: string}[]
 function textEffects.random_color(effectText, time)
-    local seed = 328 -- + #effectText
+    local seed = randomColorSeed
     local oldSeed = love.math.getRandomSeed()
 
     local colors = {}
-    for _, v in pairs(marker.textColors) do
-        colors[#colors+1] = v
+    for key, v in pairs(marker.textColors) do
+        if key ~= "default" then colors[#colors+1] = v end
     end
+    if #colors == 0 then colors[1] = "default" end
 
     for index = 1, #effectText do
         local chunk = effectText[index][1]
         local paramValue = effectText[index][2]
 
-        love.math.setRandomSeed(seed + index)
+        local values = splitParamValue(paramValue)
+        local reseed = (tonumber(values[1]) or 0)
+
+        love.math.setRandomSeed(seed + reseed + index)
         local colorIndex = love.math.random(#colors)
         love.math.setRandomSeed(oldSeed)
 
@@ -71,13 +76,50 @@ function textEffects.shake(effectText, time)
         else
             love.math.setRandomSeed(speedSeeder)
             shakeX = love.math.random() - 0.5
-            love.math.setRandomSeed(speedSeeder+1)
+            love.math.setRandomSeed(speedSeeder*2)
             shakeY = love.math.random() - 0.5
             love.math.setRandomSeed(oldSeed)
         end
 
         chunk.xOffset = chunk.xOffset + shakeX * shakeAmount
         chunk.yOffset = chunk.yOffset + shakeY * shakeAmount
+    end
+end
+---@param effectText {[1]: MarkerEffectTextChunk, [2]: string}[]
+function textEffects.wobble(effectText, time)
+    local seed = 512
+    local oldSeed = love.math.getRandomSeed()
+    for index = 1, #effectText do
+        local chunk = effectText[index][1]
+        local paramValue = effectText[index][2]
+
+        local values = splitParamValue(paramValue)
+        local speed = (tonumber(values[1]) or 1)
+        local intensity = (tonumber(values[2]) or 1)
+        local chaotify = values[3] and index or 0
+
+        local shakeAmount = math.floor(intensity * 5)
+        local spedUpTime = time * speed * 10
+        local speedSeeder = math.floor(spedUpTime + chaotify) + seed
+
+        love.math.setRandomSeed(speedSeeder)
+        local shakeX = love.math.random() - 0.5
+        love.math.setRandomSeed(speedSeeder * 2)
+        local shakeY = love.math.random() - 0.5
+
+        love.math.setRandomSeed(speedSeeder+1)
+        local shakeXNext = love.math.random() - 0.5
+        love.math.setRandomSeed((speedSeeder+1) * 2)
+        local shakeYNext = love.math.random() - 0.5
+
+        love.math.setRandomSeed(oldSeed)
+
+        local interp = 1 - (math.cos((spedUpTime % 1) * -math.pi) + 1) / 2
+        local offsetX = shakeX + (shakeXNext - shakeX) * interp
+        local offsetY = shakeY + (shakeYNext - shakeY) * interp
+
+        chunk.xOffset = chunk.xOffset + offsetX * shakeAmount
+        chunk.yOffset = chunk.yOffset + offsetY * shakeAmount
     end
 end
 ---@param effectText {[1]: MarkerEffectTextChunk, [2]: string}[]
