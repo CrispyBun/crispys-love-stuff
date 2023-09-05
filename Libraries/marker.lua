@@ -59,8 +59,9 @@ function textEffects.wiggle(effectText, time)
         local values = splitParamValue(paramValue)
         local speed = (tonumber(values[1]) or 1)
         local intensity = (tonumber(values[2]) or 1)
+        local timeOffset = (tonumber(values[3]) or 0)
 
-        local offset = math.sin(time * speed * 10)
+        local offset = math.sin((index * -timeOffset) + time * speed * 10)
 
         chunk.yOffset = chunk.yOffset + offset * intensity
     end
@@ -168,9 +169,16 @@ end
 
 ---@param str string The tag, including the [[ and ]] at the start and end
 ---@return table params Table of params (as keys) and their values
+---@return boolean chainTagged If this tag is applied to each character individually
 local function decodeTag(str)
     str = string.sub(str, 3, -3) -- trim off brackets
     str = removeEscapes(str)
+
+    local chainTagged = false
+    if string.sub(str, 1, 1) == "~" then
+        str = string.sub(str, 2, -1)
+        chainTagged = true
+    end
 
     local params = {}
 
@@ -185,7 +193,7 @@ local function decodeTag(str)
         end
     end
 
-    return params
+    return params, chainTagged
 end
 
 ---comment
@@ -200,10 +208,16 @@ local function stringToTaggedText(str, params)
     local codePrevious
     local tagStart
     local stringChunk = {}
+    local chainTagged = false
     for position, code in utf8.codes(str) do
 
         if code == openingBracketCode and codePrevious == openingBracketCode and not tagStart then
             tagStart = utf8.offset(str, 0, position-1)
+
+            if chainTagged then
+                taggedText[#taggedText] = nil
+            end
+            chainTagged = false
 
             stringChunk[#stringChunk] = nil
             taggedText[#taggedText].text = table.concat(stringChunk)
@@ -211,12 +225,20 @@ local function stringToTaggedText(str, params)
         end
 
         if not tagStart and ((code ~= escapeCharacterCode) or escaped) then
-            stringChunk[#stringChunk+1] = utf8.char(code)
+            local char = utf8.char(code)
+            stringChunk[#stringChunk+1] = char
+
+            if chainTagged then
+                taggedText[#taggedText].text = char
+                taggedText[#taggedText+1] = {params = duplicateDictionary(taggedText[#taggedText].params)}
+                stringChunk = {}
+            end
         end
 
         if code == closingBracketCode and codePrevious == closingBracketCode and tagStart then
             local tag = string.sub(str, tagStart, position)
-            local params = decodeTag(tag)
+            local params
+            params, chainTagged = decodeTag(tag)
 
             taggedText[#taggedText+1] = {params = duplicateDictionary(taggedText[#taggedText].params)}
             for param, value in pairs(params) do
