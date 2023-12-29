@@ -4,25 +4,37 @@ local marker = {}
 
 local paramUnsetKeywords = {"none", "unset", "/"}
 
+----------------------------------------------------------------------------------------------------
 -- Class definitions ------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------
 
 ---@class MarkerParamDictionary
 ---@field [string] string|false
 
 ---@class MarkerParamChar
----@field text string The string this character represents. Usually one character, but can actually be more.
+---@field text string The string this character represents. Usually one character, but can actually be more, however, it will still act as one character and won't be able to be split.
 ---@field params MarkerParamDictionary The parameters and their values for this char
+
+---@alias textAlign
+---| '"default' # A default alignment. Identical to "left" (but you should use "left" instead of "default")
+---| '"left"' # Aligns text to the left horizontally
+---| '"right"' # Aligns text to the right horizontally
+---| '"center"' # Aligns text to the center horizontally
+---| '"middle"' # Identical to "center"
 
 ---@class MarkedText
 ---@field x number The X location to draw the text at
 ---@field y number The Y location to draw the text at
 ---@field font love.Font The font used for drawing the text
+---@field maxWidth number The maximum width the text can take up
 ---
 ---@field rawString string The string used in creation of this markedText, with no processing
 ---@field strippedString string The raw string stripped of its tags, leaving only plaintext
 ---@field paramString MarkerParamChar[] The full paramString
 
+----------------------------------------------------------------------------------------------------
 -- Generic local functions ------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------
 
 ---@param str string
 ---@return string
@@ -41,7 +53,9 @@ local function shallowCopy(t, target)
     return newTable
 end
 
+----------------------------------------------------------------------------------------------------
 -- Petite local functions ------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------
 
 --- Parses and deletes the escape characters
 ---@param str any
@@ -60,7 +74,9 @@ local function isParamUnsetKeyword(str)
     return false
 end
 
+----------------------------------------------------------------------------------------------------
 -- Meaty local functions --------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------
 
 --- Attempts to find a tag in the input string
 ---@param str string String to find tag in
@@ -183,29 +199,95 @@ end
 ---@return string strippedString The input string stripped of all of its tags
 local function stringToTagString(str)
     local strippedString, params = stripStringOfTags(str)
-    local paramString = convertStrippedStringToParamString(str, params)
+    local paramString = convertStrippedStringToParamString(strippedString, params)
     return paramString, strippedString
 end
 
+----------------------------------------------------------------------------------------------------
 -- The markedText class ----------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------
+
+-- Holds different functions for drawing the text differently based on the textAlign property
+local drawFunctions = {}
+
+---@param markedText MarkedText
+---@param alignment? number
+function drawFunctions.default(markedText, alignment)
+    alignment = alignment or -1
+
+    local x = markedText.x
+    local y = markedText.y
+    local maxWidth = markedText.maxWidth
+    local paramString = markedText.paramString
+    local font = markedText.font
+    local lineHeight = font:getHeight()
+
+    local stringEndFound = false
+    local lineCharacterIndex = 1
+    local lineIndex = 1
+    while not stringEndFound do
+        local lineCharacterCount = 0
+        local lineWidth = 0
+        local lineOverflowed = false
+        local lastWhitespaceAtCount
+        while true do
+            local currentCharIndex = lineCharacterIndex + lineCharacterCount
+            local paramChar = paramString[currentCharIndex]
+            if not paramChar then
+                stringEndFound = true
+                break
+            end
+            if paramChar.text == "\n" then
+                lineCharacterCount = lineCharacterCount + 1
+                break
+            end
+
+            if paramChar.text == " " then
+                lastWhitespaceAtCount = lineCharacterCount + 1 -- +1 to include the whitespace in the count
+            end
+
+            local charWidth = font:getWidth(paramChar.text)
+            if lineWidth + charWidth > maxWidth and lineCharacterCount > 0 then
+                -- We've reached max width, + one character per line minimum to avoid an infinite loop
+                lineOverflowed = true
+
+                -- Only split at spaces if possible
+                lineCharacterCount = lastWhitespaceAtCount or lineCharacterCount
+                break
+            end
+
+            -- We're safe to add this character to the current line
+            lineCharacterCount = lineCharacterCount + 1
+            lineWidth = lineWidth + charWidth
+        end
+
+        local fontPrevious = love.graphics.getFont()
+        love.graphics.setFont(font)
+        local lineWidthProgress = 0 -- todo: set this as negative space width if the line was split at a space
+        for charIndex = lineCharacterIndex, lineCharacterIndex + lineCharacterCount - 1 do
+            local paramChar = paramString[charIndex]
+            local charText = paramChar.text
+
+            local drawX = x + lineWidthProgress
+            local drawY = y + (lineIndex - 1) * lineHeight
+            love.graphics.print(charText, drawX, drawY)
+
+            lineWidthProgress = lineWidthProgress + font:getWidth(charText)
+        end
+        love.graphics.setFont(fontPrevious)
+
+        lineCharacterIndex = lineCharacterIndex + lineCharacterCount
+        lineIndex = lineIndex + 1
+    end
+end
 
 ---@class MarkedText
 local markedTextMetatable = {}
 markedTextMetatable.__index = markedTextMetatable
 
 --- Draws the text, optionally overriding the set X and Y coordinates with the given parameters
----@param x? number
----@param y? number
-function markedTextMetatable:draw(x, y)
-    x = x or self.x
-    y = y or self.y
-    local font = self.font
-
-    -- Basic drawing for testing
-
-    --- For some reason this version of print (string, font, x, y) isn't recognised but it exists, so diagnostic disable it is
-    ---@diagnostic disable-next-line: param-type-mismatch
-    love.graphics.print(self.strippedString, font, x, y)
+function markedTextMetatable:draw()
+    drawFunctions.default(self)
 end
 
 --- Parses a new string and sets the MarkedText to it
@@ -217,15 +299,22 @@ function markedTextMetatable:setText(str)
     self.paramString = paramString
 end
 
---- Creates a new MarkedText instace
+local defaultFont = love.graphics.newFont()
+--- Creates a new MarkedText instance
 ---@param str? string The tagged string to parse and set the text to (Default is empty string)
+---@param font? love.Font The font used to draw this text
 ---@param x? number The X location to place the text at (Default is 0)
 ---@param y? number The Y location to place the text at (Default is 0)
+---@param maxWidth? number The maximum width the text can take up (Default is infinity)
+---@param textAlign? textAlign The horizontal alignment of the text (Default is "left")
 ---@return MarkedText markedText
-function marker.newMarkedText(str, x, y)
+function marker.newMarkedText(str, font, x, y, maxWidth, textAlign)
     str = str or ""
+    font = font or defaultFont
     x = x or 0
     y = y or 0
+    maxWidth = maxWidth or math.huge
+    textAlign = textAlign or "left"
 
     local paramString, strippedString = stringToTagString(str)
 
@@ -233,6 +322,9 @@ function marker.newMarkedText(str, x, y)
     local markedText = {
         x = x,
         y = y,
+        font = font,
+        maxWidth = maxWidth,
+        textAlign = textAlign,
         rawString = str,
         strippedString = strippedString,
         paramString = paramString,
