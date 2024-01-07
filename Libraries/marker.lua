@@ -2,7 +2,93 @@ local utf8 = require("utf8")
 
 local marker = {}
 
+marker.colors = {
+    default = {1, 1, 1}, -- A "default" should always exist
+    red = {1, 0.1, 0.15},
+    green = {0, 1, 0.1},
+    blue = {0.2, 0.2, 1},
+}
+
 local paramUnsetKeywords = {"none", "unset", "/"}
+
+----------------------------------------------------------------------------------------------------
+-- Text effects -----------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------
+
+marker.charEffectsOrder = {
+    "color",
+    "tint",
+
+    "wave",
+    "harmonica",
+    "shatter",
+
+    "text",
+    "corrupt"
+}
+
+marker.charEffects = {}
+
+marker.charEffects.color = function (char, arg)
+    char.color = marker.colors[arg] or marker.colors.default or {1,1,1}
+end
+marker.charEffects.tint = marker.charEffects.color -- Just a color on top of color
+
+marker.charEffects.wave = function (char, arg, time, charIndex)
+    local amount = tonumber(arg) or 1
+    char.yOffset = char.yOffset + math.sin((time * 10) - (charIndex / 2)) * amount
+end
+marker.charEffects.harmonica = function (char, arg, time, charIndex)
+    local amount = tonumber(arg)
+    amount = amount or 1
+    char.xOffset = char.xOffset + math.sin((time * 10) - (charIndex / 2)) * amount
+end
+
+marker.charEffects.text = function (char, arg, time, charIndex, charPrevious)
+    local replacementChars = {}
+    for pos, charCode in utf8.codes(arg) do
+        local nextChar = utf8.char(charCode)
+        replacementChars[#replacementChars+1] = {
+            text = nextChar,
+            xOffset = 0,
+            yOffset = 0,
+            color = {1, 1, 1},
+            paramsUsed = char.paramsUsed
+        }
+    end
+
+    return replacementChars
+end
+
+local corruptChars = {'#', '$', '%', '&', '@', '=', '?', '6', '<', '>'}
+marker.charEffects.corrupt = function (char, arg, time, charIndex, charPrevious)
+    local speed = tonumber(arg) or 1
+    local progress = math.floor(time * 20 * speed)
+
+    local seedPrevious = love.math.getRandomSeed()
+    local charSeed = utf8.codepoint(char.text) + progress
+    love.math.setRandomSeed(charSeed)
+
+    local pickedCharIndex = love.math.random(1, #corruptChars)
+
+    char.text = corruptChars[pickedCharIndex]
+    love.math.setRandomSeed(seedPrevious)
+end
+
+marker.charEffects.shatter = function (char, arg, time, charIndex, charPrevious)
+    local amount = (tonumber(arg) or 1) * 4
+
+    local prevChar = charPrevious and charPrevious.text or "a"
+
+    local seedPrevious = love.math.getRandomSeed()
+    local charSeed = utf8.codepoint(char.text) + utf8.codepoint(prevChar)
+    love.math.setRandomSeed(charSeed)
+
+    local xOffset = math.floor(love.math.random() * amount + 0.5)
+    local yOffset = math.floor(love.math.random() * amount + 0.5)
+    char.xOffset = char.xOffset + xOffset
+    char.yOffset = char.yOffset + yOffset
+end
 
 ----------------------------------------------------------------------------------------------------
 -- Class definitions ------------------------------------------------------------------------------
@@ -27,10 +113,18 @@ local paramUnsetKeywords = {"none", "unset", "/"}
 ---@field y number The Y location to draw the text at
 ---@field font love.Font The font used for drawing the text
 ---@field maxWidth number The maximum width the text can take up
+---@field time number The accumulated elapsed deltatime
 ---
 ---@field rawString string The string used in creation of this markedText, with no processing
 ---@field strippedString string The raw string stripped of its tags, leaving only plaintext
 ---@field paramString MarkerParamChar[] The full paramString
+
+---@class MarkerParamCharCollapsed -- Collapsed by the draw function into clear instructions for how to draw it, instead of params
+---@field text string
+---@field xOffset number
+---@field yOffset number
+---@field color number[]
+---@field paramsUsed MarkerParamDictionary The params used in this char to collapse it
 
 ----------------------------------------------------------------------------------------------------
 -- Generic local functions ------------------------------------------------------------------------
@@ -203,6 +297,77 @@ local function stringToTagString(str)
     return paramString, strippedString
 end
 
+local function applyCharEffectsOnCollapsedParamChar(collapsedParamChar, time, stringIndex, collapsedCharPrevious, ignoreReplacementChars)
+    local charParams = collapsedParamChar.paramsUsed
+    local replacementChars
+
+    for charEffectIndex = 1, #marker.charEffectsOrder do
+        local charEffectName = marker.charEffectsOrder[charEffectIndex]
+        local paramValue = charParams[charEffectName]
+
+        if paramValue then
+            local replacementCharOutput = marker.charEffects[charEffectName](collapsedParamChar, paramValue, time, stringIndex, collapsedCharPrevious)
+
+            if collapsedCharPrevious and replacementCharOutput and collapsedCharPrevious.paramsUsed[charEffectName] then
+                -- Replacement output is only applied to the first character, the rest of the characters must just get deleted
+                replacementCharOutput = {}
+            end
+            replacementChars = replacementCharOutput or replacementChars
+        end
+    end
+
+    -- Apply effects again on replacement characters
+    local replacementCharPrevious = collapsedCharPrevious
+    if replacementChars and not ignoreReplacementChars then
+        for replacementCharIndex = 1, #replacementChars do
+            local replacementChar = replacementChars[replacementCharIndex]
+            applyCharEffectsOnCollapsedParamChar(replacementChar, time, stringIndex + replacementCharIndex - 1, replacementCharPrevious, true)
+            replacementCharPrevious = replacementChar
+        end
+    end
+
+    return replacementChars
+end
+
+---@param paramString MarkerParamChar[]
+---@return MarkerParamCharCollapsed[]
+local function collapseParamString(paramString, time)
+    ---@type MarkerParamCharCollapsed[]
+    local collapsedParamString = {}
+    local stringIndex = 1
+    local charsEncountered = 0
+    local collapsedCharPrevious
+    while stringIndex <= #paramString do
+        charsEncountered = charsEncountered + 1
+
+        local paramChar = paramString[stringIndex]
+        local charParams = paramChar.params
+
+        local collapsedParamChar = {
+            text = paramChar.text,
+            xOffset = 0,
+            yOffset = 0,
+            color = {1, 1, 1},
+            paramsUsed = charParams
+        }
+
+        local replacementChars = applyCharEffectsOnCollapsedParamChar(collapsedParamChar, time, charsEncountered, collapsedCharPrevious)
+
+        if replacementChars then
+            for replacementCharIndex = 1, #replacementChars do
+                collapsedParamString[#collapsedParamString+1] = replacementChars[replacementCharIndex]
+            end
+            charsEncountered = charsEncountered + #replacementChars - 1
+        else
+            collapsedParamString[#collapsedParamString+1] = collapsedParamChar
+        end
+
+        stringIndex = stringIndex + 1
+        collapsedCharPrevious = collapsedParamChar
+    end
+    return collapsedParamString
+end
+
 ----------------------------------------------------------------------------------------------------
 -- The markedText class ----------------------------------------------------------------------------
 ----------------------------------------------------------------------------------------------------
@@ -222,6 +387,8 @@ function drawFunctions.default(markedText, alignment)
     local font = markedText.font
     local lineHeight = font:getHeight()
 
+    local collapsedParamString = collapseParamString(paramString, markedText.time)
+
     local stringEndFound = false
     local lineCharacterIndex = 1
     local lineIndex = 1
@@ -232,7 +399,7 @@ function drawFunctions.default(markedText, alignment)
         local lastWhitespaceAtCount
         while true do
             local currentCharIndex = lineCharacterIndex + lineCharacterCount
-            local paramChar = paramString[currentCharIndex]
+            local paramChar = collapsedParamString[currentCharIndex]
             if not paramChar then
                 stringEndFound = true
                 break
@@ -262,19 +429,26 @@ function drawFunctions.default(markedText, alignment)
         end
 
         local fontPrevious = love.graphics.getFont()
+        local cr, cg, cb, ca = love.graphics.getColor()
         love.graphics.setFont(font)
         local lineWidthProgress = 0 -- todo: set this as negative space width if the line was split at a space
         for charIndex = lineCharacterIndex, lineCharacterIndex + lineCharacterCount - 1 do
-            local paramChar = paramString[charIndex]
+            local paramChar = collapsedParamString[charIndex]
             local charText = paramChar.text
+            local charColor = paramChar.color
+            local charXOffset = paramChar.xOffset
+            local charYOffset = paramChar.yOffset
 
-            local drawX = x + lineWidthProgress
-            local drawY = y + (lineIndex - 1) * lineHeight
+            love.graphics.setColor(charColor)
+
+            local drawX = x + lineWidthProgress + charXOffset
+            local drawY = y + (lineIndex - 1) * lineHeight + charYOffset
             love.graphics.print(charText, drawX, drawY)
 
             lineWidthProgress = lineWidthProgress + font:getWidth(charText)
         end
         love.graphics.setFont(fontPrevious)
+        love.graphics.setColor(cr, cg, cb, ca)
 
         lineCharacterIndex = lineCharacterIndex + lineCharacterCount
         lineIndex = lineIndex + 1
@@ -288,6 +462,12 @@ markedTextMetatable.__index = markedTextMetatable
 --- Draws the text, optionally overriding the set X and Y coordinates with the given parameters
 function markedTextMetatable:draw()
     drawFunctions.default(self)
+end
+
+-- Updates the text to animate
+---@param dt number
+function markedTextMetatable:update(dt)
+    self.time = self.time + dt
 end
 
 --- Parses a new string and sets the MarkedText to it
@@ -328,6 +508,7 @@ function marker.newMarkedText(str, font, x, y, maxWidth, textAlign)
         rawString = str,
         strippedString = strippedString,
         paramString = paramString,
+        time = 0
     }
 
     setmetatable(markedText, markedTextMetatable)
