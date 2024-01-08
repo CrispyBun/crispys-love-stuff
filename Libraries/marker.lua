@@ -78,14 +78,12 @@ end
 marker.charEffects.shatter = function (char, arg, time, charIndex, charPrevious)
     local amount = (tonumber(arg) or 1) * 4
 
-    local prevChar = charPrevious and charPrevious.text or "a"
-
     local seedPrevious = love.math.getRandomSeed()
-    local charSeed = utf8.codepoint(char.text) + utf8.codepoint(prevChar)
+    local charSeed = utf8.codepoint(char.text) + charIndex
     love.math.setRandomSeed(charSeed)
 
-    local xOffset = math.floor(love.math.random() * amount + 0.5)
-    local yOffset = math.floor(love.math.random() * amount + 0.5)
+    local xOffset = math.floor((love.math.random() - 0.5) * amount + 0.5)
+    local yOffset = math.floor((love.math.random() - 0.5) * amount + 0.5)
     char.xOffset = char.xOffset + xOffset
     char.yOffset = char.yOffset + yOffset
 end
@@ -101,7 +99,7 @@ end
 ---@field text string The string this character represents. Usually one character, but can actually be more, however, it will still act as one character and won't be able to be split.
 ---@field params MarkerParamDictionary The parameters and their values for this char
 
----@alias textAlign
+---@alias MarkerTextAlign
 ---| '"default' # A default alignment. Identical to "left" (but you should use "left" instead of "default")
 ---| '"left"' # Aligns text to the left horizontally
 ---| '"right"' # Aligns text to the right horizontally
@@ -114,6 +112,7 @@ end
 ---@field font love.Font The font used for drawing the text
 ---@field maxWidth number The maximum width the text can take up
 ---@field time number The accumulated elapsed deltatime
+---@field textAlign MarkerTextAlign
 ---
 ---@field rawString string The string used in creation of this markedText, with no processing
 ---@field strippedString string The raw string stripped of its tags, leaving only plaintext
@@ -375,6 +374,15 @@ end
 -- Holds different functions for drawing the text differently based on the textAlign property
 local drawFunctions = {}
 
+function drawFunctions.invalid(markedText)
+    local x = markedText.x
+    local y = markedText.y
+    local fontPrevious = love.graphics.getFont()
+    love.graphics.setFont(markedText.font)
+    love.graphics.print("Invalid text align property: '" .. tostring(markedText.textAlign) .. "'", x, y)
+    love.graphics.setFont(fontPrevious)
+end
+
 ---@param markedText MarkedText
 ---@param alignment? number
 function drawFunctions.default(markedText, alignment)
@@ -395,6 +403,7 @@ function drawFunctions.default(markedText, alignment)
     while not stringEndFound do
         local lineCharacterCount = 0
         local lineWidth = 0
+        local lineWidthUntilLastWhitespace
         local lineOverflowed = false
         local lastWhitespaceAtCount
         while true do
@@ -411,6 +420,7 @@ function drawFunctions.default(markedText, alignment)
 
             if paramChar.text == " " then
                 lastWhitespaceAtCount = lineCharacterCount + 1 -- +1 to include the whitespace in the count
+                lineWidthUntilLastWhitespace = lineWidth
             end
 
             local charWidth = font:getWidth(paramChar.text)
@@ -420,6 +430,7 @@ function drawFunctions.default(markedText, alignment)
 
                 -- Only split at spaces if possible
                 lineCharacterCount = lastWhitespaceAtCount or lineCharacterCount
+                lineWidth = lineWidthUntilLastWhitespace or lineWidth
                 break
             end
 
@@ -428,6 +439,8 @@ function drawFunctions.default(markedText, alignment)
             lineWidth = lineWidth + charWidth
         end
 
+        local lineUnusedSpaceHalf = (maxWidth - lineWidth) * 0.5
+        local alignmentOffset = lineUnusedSpaceHalf + lineUnusedSpaceHalf * alignment
         local fontPrevious = love.graphics.getFont()
         local cr, cg, cb, ca = love.graphics.getColor()
         love.graphics.setFont(font)
@@ -441,7 +454,7 @@ function drawFunctions.default(markedText, alignment)
 
             love.graphics.setColor(charColor)
 
-            local drawX = x + lineWidthProgress + charXOffset
+            local drawX = x + lineWidthProgress + charXOffset + alignmentOffset
             local drawY = y + (lineIndex - 1) * lineHeight + charYOffset
             love.graphics.print(charText, drawX, drawY)
 
@@ -455,13 +468,18 @@ function drawFunctions.default(markedText, alignment)
     end
 end
 
+drawFunctions.left = function (markedText) return drawFunctions.default(markedText, -1) end
+drawFunctions.right = function (markedText) return drawFunctions.default(markedText, 1) end
+drawFunctions.center = function (markedText) return drawFunctions.default(markedText, 0) end
+
 ---@class MarkedText
 local markedTextMetatable = {}
 markedTextMetatable.__index = markedTextMetatable
 
 --- Draws the text, optionally overriding the set X and Y coordinates with the given parameters
 function markedTextMetatable:draw()
-    drawFunctions.default(self)
+    local drawFunction = drawFunctions[self.textAlign] or drawFunctions.invalid
+    drawFunction(self)
 end
 
 -- Updates the text to animate
@@ -486,7 +504,7 @@ local defaultFont = love.graphics.newFont()
 ---@param x? number The X location to place the text at (Default is 0)
 ---@param y? number The Y location to place the text at (Default is 0)
 ---@param maxWidth? number The maximum width the text can take up (Default is infinity)
----@param textAlign? textAlign The horizontal alignment of the text (Default is "left")
+---@param textAlign? MarkerTextAlign The horizontal alignment of the text (Default is "left")
 ---@return MarkedText markedText
 function marker.newMarkedText(str, font, x, y, maxWidth, textAlign)
     str = str or ""
@@ -504,11 +522,11 @@ function marker.newMarkedText(str, font, x, y, maxWidth, textAlign)
         y = y,
         font = font,
         maxWidth = maxWidth,
+        time = 0,
         textAlign = textAlign,
         rawString = str,
         strippedString = strippedString,
         paramString = paramString,
-        time = 0
     }
 
     setmetatable(markedText, markedTextMetatable)
