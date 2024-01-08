@@ -12,6 +12,43 @@ marker.colors = {
 local paramUnsetKeywords = {"none", "unset", "/"}
 
 ----------------------------------------------------------------------------------------------------
+-- Class definitions ------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------
+
+---@class MarkerParamDictionary
+---@field [string] string|false
+
+---@class MarkerParamChar
+---@field text string The string this character represents. Usually one character, but can actually be more, however, it will still act as one character and won't be able to be split.
+---@field params MarkerParamDictionary The parameters and their values for this char
+
+---@alias MarkerTextAlign
+---| '"default' # A default alignment. Identical to "left" (but you should use "left" instead of "default")
+---| '"left"' # Aligns text to the left horizontally
+---| '"right"' # Aligns text to the right horizontally
+---| '"center"' # Aligns text to the center horizontally
+---| '"middle"' # Identical to "center"
+
+---@class MarkedText
+---@field x number The X location to draw the text at
+---@field y number The Y location to draw the text at
+---@field font love.Font The font used for drawing the text
+---@field maxWidth number The maximum width the text can take up
+---@field time number The accumulated elapsed deltatime
+---@field textAlign MarkerTextAlign
+---
+---@field rawString string The string used in creation of this markedText, with no processing
+---@field strippedString string The raw string stripped of its tags, leaving only plaintext
+---@field paramString MarkerParamChar[] The full paramString
+
+---@class MarkerParamCharCollapsed -- Collapsed by the draw function into clear instructions for how to draw it, instead of params
+---@field text string
+---@field xOffset number
+---@field yOffset number
+---@field color number[]
+---@field paramsUsed MarkerParamDictionary The params used in this char to collapse it
+
+----------------------------------------------------------------------------------------------------
 -- Text effects -----------------------------------------------------------------------------------
 ----------------------------------------------------------------------------------------------------
 
@@ -87,43 +124,6 @@ marker.charEffects.shatter = function (char, arg, time, charIndex, charPrevious)
     char.xOffset = char.xOffset + xOffset
     char.yOffset = char.yOffset + yOffset
 end
-
-----------------------------------------------------------------------------------------------------
--- Class definitions ------------------------------------------------------------------------------
-----------------------------------------------------------------------------------------------------
-
----@class MarkerParamDictionary
----@field [string] string|false
-
----@class MarkerParamChar
----@field text string The string this character represents. Usually one character, but can actually be more, however, it will still act as one character and won't be able to be split.
----@field params MarkerParamDictionary The parameters and their values for this char
-
----@alias MarkerTextAlign
----| '"default' # A default alignment. Identical to "left" (but you should use "left" instead of "default")
----| '"left"' # Aligns text to the left horizontally
----| '"right"' # Aligns text to the right horizontally
----| '"center"' # Aligns text to the center horizontally
----| '"middle"' # Identical to "center"
-
----@class MarkedText
----@field x number The X location to draw the text at
----@field y number The Y location to draw the text at
----@field font love.Font The font used for drawing the text
----@field maxWidth number The maximum width the text can take up
----@field time number The accumulated elapsed deltatime
----@field textAlign MarkerTextAlign
----
----@field rawString string The string used in creation of this markedText, with no processing
----@field strippedString string The raw string stripped of its tags, leaving only plaintext
----@field paramString MarkerParamChar[] The full paramString
-
----@class MarkerParamCharCollapsed -- Collapsed by the draw function into clear instructions for how to draw it, instead of params
----@field text string
----@field xOffset number
----@field yOffset number
----@field color number[]
----@field paramsUsed MarkerParamDictionary The params used in this char to collapse it
 
 ----------------------------------------------------------------------------------------------------
 -- Generic local functions ------------------------------------------------------------------------
