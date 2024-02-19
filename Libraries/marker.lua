@@ -44,6 +44,7 @@ local paramUnsetKeywords = {"none", "unset", "/"}
 ---@field textAlign MarkerTextAlign
 ---@field verticalAlign MarkerVerticalAlign
 ---@field boxHeight number
+---@field doRelativeXAlign boolean
 ---
 ---@field rawString string The string used in creation of this markedText, with no processing
 ---@field strippedString string The raw string stripped of its tags, leaving only plaintext
@@ -495,6 +496,10 @@ function drawFunctions.default(markedText, alignment)
         local lineCharacterCount, lineWidth, lineOverflowed
         lineCharacterCount, lineWidth, lineOverflowed, stringEndFound = extractLine(collapsedParamString, lineCharacterIndex, font, maxWidth)
 
+        local textBlockOffset = 0
+        if markedText.doRelativeXAlign then
+            textBlockOffset = -(maxWidth + maxWidth * alignment)/2
+        end
         local lineUnusedSpace = maxWidth - lineWidth
         local alignmentOffset = (lineUnusedSpace + lineUnusedSpace * alignment)/2
         local lineWidthProgress = 0
@@ -502,7 +507,7 @@ function drawFunctions.default(markedText, alignment)
             local paramChar = collapsedParamString[charIndex]
             local charText = paramChar.text
 
-            local charX = x + lineWidthProgress + alignmentOffset
+            local charX = x + lineWidthProgress + alignmentOffset + textBlockOffset
             local charY = y + (lineIndex - 1) * lineHeight
 
             paramChar.x = charX
@@ -561,7 +566,7 @@ local defaultFont = love.graphics.newFont()
 ---@param verticalAlign? MarkerVerticalAlign The vertical alignment of the text (Default is "top")
 ---@param boxHeight? number The reference height of a box this text lays in, used for vertical alignment. (Default is 0 - aligns relatively to X and Y)
 ---@return MarkerMarkedText markedText
-function marker.newMarkedText(str, font, x, y, maxWidth, textAlign, verticalAlign, boxHeight)
+function marker.newMarkedText(str, font, x, y, maxWidth, textAlign, verticalAlign, boxHeight, doRelativeXAlign)
     str = str or ""
     font = font or defaultFont
     x = x or 0
@@ -570,6 +575,7 @@ function marker.newMarkedText(str, font, x, y, maxWidth, textAlign, verticalAlig
     textAlign = textAlign or "left"
     verticalAlign = verticalAlign or "top"
     boxHeight = boxHeight or 0
+    doRelativeXAlign = doRelativeXAlign or false
 
     local paramString, strippedString = stringToTagString(str)
 
@@ -583,6 +589,7 @@ function marker.newMarkedText(str, font, x, y, maxWidth, textAlign, verticalAlig
         textAlign = textAlign,
         verticalAlign = verticalAlign,
         boxHeight = boxHeight,
+        doRelativeXAlign = doRelativeXAlign,
         rawString = str,
         strippedString = strippedString,
         paramString = paramString,
