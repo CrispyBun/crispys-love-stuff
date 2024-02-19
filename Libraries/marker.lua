@@ -29,13 +29,21 @@ local paramUnsetKeywords = {"none", "unset", "/"}
 ---| '"center"' # Aligns text to the center horizontally
 ---| '"middle"' # Identical to "center"
 
----@class MarkedText
+---@alias MarkerVerticalAlign
+---| '"top"' # Aligns to top (This is the default)
+---| '"middle"' # Aligns to the middle
+---| '"center"' # Identical to "middle"
+---| '"bottom"' # Aligns to bottom
+
+---@class MarkerMarkedText
 ---@field x number The X location to draw the text at
 ---@field y number The Y location to draw the text at
 ---@field font love.Font The font used for drawing the text
 ---@field maxWidth number The maximum width the text can take up
 ---@field time number The accumulated elapsed deltatime
 ---@field textAlign MarkerTextAlign
+---@field verticalAlign MarkerVerticalAlign
+---@field boxHeight number
 ---
 ---@field rawString string The string used in creation of this markedText, with no processing
 ---@field strippedString string The raw string stripped of its tags, leaving only plaintext
@@ -47,6 +55,8 @@ local paramUnsetKeywords = {"none", "unset", "/"}
 ---@field yOffset number
 ---@field color number[]
 ---@field paramsUsed MarkerParamDictionary The params used in this char to collapse it
+---@field x? number
+---@field y? number
 
 ----------------------------------------------------------------------------------------------------
 -- Text effects -----------------------------------------------------------------------------------
@@ -374,6 +384,87 @@ end
 -- Holds different functions for drawing the text differently based on the textAlign property
 local drawFunctions = {}
 
+---Assumes the x and y of the characters have been set
+---@param collapsedParamString MarkerParamCharCollapsed[]
+---@param boxHeight number
+---@param textHeight number
+---@param verticalAlign number
+---@param font love.Font
+local function renderCollapsedParamString(collapsedParamString, boxHeight, textHeight, verticalAlign, font)
+    local textUnusedSpace = boxHeight - textHeight
+    local verticalAlignOffset = (textUnusedSpace + textUnusedSpace * verticalAlign)/2
+
+    local fontPrevious = love.graphics.getFont()
+    local cr, cg, cb, ca = love.graphics.getColor()
+    love.graphics.setFont(font)
+    for paramCharIndex = 1, #collapsedParamString do
+        local paramChar = collapsedParamString[paramCharIndex]
+        local charX = paramChar.x
+        local charY = paramChar.y
+        local charText = paramChar.text
+        local charColor = paramChar.color
+        local charXOffset = paramChar.xOffset
+        local charYOffset = paramChar.yOffset
+
+        charX = math.floor(charX + charXOffset)
+        charY = math.floor(charY + charYOffset + verticalAlignOffset)
+
+        love.graphics.setColor(charColor)
+        love.graphics.print(charText, charX, charY)
+    end
+    love.graphics.setFont(fontPrevious)
+    love.graphics.setColor(cr, cg, cb, ca)
+end
+
+local function extractLine(collapsedParamString, lineCharacterIndex, font, maxWidth)
+    local lineCharacterCount = 0
+    local lineWidth = 0
+    local lineWidthUntilLastWhitespace
+    local lineOverflowed = false
+    local stringEndFound = false
+    local lastWhitespaceAtCount
+    while true do
+        local currentCharIndex = lineCharacterIndex + lineCharacterCount
+        local paramChar = collapsedParamString[currentCharIndex]
+        if not paramChar then
+            stringEndFound = true
+            break
+        end
+        if paramChar.text == "\n" then
+            lineCharacterCount = lineCharacterCount + 1
+            break
+        end
+
+        if paramChar.text == " " then
+            lastWhitespaceAtCount = lineCharacterCount + 1 -- +1 to include the whitespace in the count
+            lineWidthUntilLastWhitespace = lineWidth
+        end
+
+        local charWidth = font:getWidth(paramChar.text)
+        if lineWidth + charWidth > maxWidth and lineCharacterCount > 0 then
+            -- We've reached max width, + one character per line minimum to avoid an infinite loop
+            lineOverflowed = true
+
+            -- Only split at spaces if possible
+            lineCharacterCount = lastWhitespaceAtCount or lineCharacterCount
+            lineWidth = lineWidthUntilLastWhitespace or lineWidth
+            break
+        end
+
+        -- We're safe to add this character to the current line
+        lineCharacterCount = lineCharacterCount + 1
+        lineWidth = lineWidth + charWidth
+    end
+    return lineCharacterCount, lineWidth, lineOverflowed, stringEndFound
+end
+
+local verticalAlignEnum = {
+    top = -1,
+    middle = 0,
+    center = 0,
+    bottom = 1
+}
+
 function drawFunctions.invalid(markedText)
     local x = markedText.x
     local y = markedText.y
@@ -383,7 +474,7 @@ function drawFunctions.invalid(markedText)
     love.graphics.setFont(fontPrevious)
 end
 
----@param markedText MarkedText
+---@param markedText MarkerMarkedText
 ---@param alignment? number
 function drawFunctions.default(markedText, alignment)
     alignment = alignment or -1
@@ -401,78 +492,40 @@ function drawFunctions.default(markedText, alignment)
     local lineCharacterIndex = 1
     local lineIndex = 1
     while not stringEndFound do
-        local lineCharacterCount = 0
-        local lineWidth = 0
-        local lineWidthUntilLastWhitespace
-        local lineOverflowed = false
-        local lastWhitespaceAtCount
-        while true do
-            local currentCharIndex = lineCharacterIndex + lineCharacterCount
-            local paramChar = collapsedParamString[currentCharIndex]
-            if not paramChar then
-                stringEndFound = true
-                break
-            end
-            if paramChar.text == "\n" then
-                lineCharacterCount = lineCharacterCount + 1
-                break
-            end
+        local lineCharacterCount, lineWidth, lineOverflowed
+        lineCharacterCount, lineWidth, lineOverflowed, stringEndFound = extractLine(collapsedParamString, lineCharacterIndex, font, maxWidth)
 
-            if paramChar.text == " " then
-                lastWhitespaceAtCount = lineCharacterCount + 1 -- +1 to include the whitespace in the count
-                lineWidthUntilLastWhitespace = lineWidth
-            end
-
-            local charWidth = font:getWidth(paramChar.text)
-            if lineWidth + charWidth > maxWidth and lineCharacterCount > 0 then
-                -- We've reached max width, + one character per line minimum to avoid an infinite loop
-                lineOverflowed = true
-
-                -- Only split at spaces if possible
-                lineCharacterCount = lastWhitespaceAtCount or lineCharacterCount
-                lineWidth = lineWidthUntilLastWhitespace or lineWidth
-                break
-            end
-
-            -- We're safe to add this character to the current line
-            lineCharacterCount = lineCharacterCount + 1
-            lineWidth = lineWidth + charWidth
-        end
-
-        local lineUnusedSpaceHalf = (maxWidth - lineWidth) * 0.5
-        local alignmentOffset = lineUnusedSpaceHalf + lineUnusedSpaceHalf * alignment
-        local fontPrevious = love.graphics.getFont()
-        local cr, cg, cb, ca = love.graphics.getColor()
-        love.graphics.setFont(font)
-        local lineWidthProgress = 0 -- todo: set this as negative space width if the line was split at a space
+        local lineUnusedSpace = maxWidth - lineWidth
+        local alignmentOffset = (lineUnusedSpace + lineUnusedSpace * alignment)/2
+        local lineWidthProgress = 0
         for charIndex = lineCharacterIndex, lineCharacterIndex + lineCharacterCount - 1 do
             local paramChar = collapsedParamString[charIndex]
             local charText = paramChar.text
-            local charColor = paramChar.color
-            local charXOffset = paramChar.xOffset
-            local charYOffset = paramChar.yOffset
 
-            love.graphics.setColor(charColor)
+            local charX = x + lineWidthProgress + alignmentOffset
+            local charY = y + (lineIndex - 1) * lineHeight
 
-            local drawX = x + lineWidthProgress + charXOffset + alignmentOffset
-            local drawY = y + (lineIndex - 1) * lineHeight + charYOffset
-            love.graphics.print(charText, drawX, drawY)
+            paramChar.x = charX
+            paramChar.y = charY
 
             lineWidthProgress = lineWidthProgress + font:getWidth(charText)
         end
-        love.graphics.setFont(fontPrevious)
-        love.graphics.setColor(cr, cg, cb, ca)
 
         lineCharacterIndex = lineCharacterIndex + lineCharacterCount
         lineIndex = lineIndex + 1
     end
+
+    local textHeight = lineHeight * (lineIndex - 1)
+    local verticalAlign = verticalAlignEnum[markedText.verticalAlign]
+    renderCollapsedParamString(collapsedParamString, markedText.boxHeight, textHeight, verticalAlign, font)
 end
 
 drawFunctions.left = function (markedText) return drawFunctions.default(markedText, -1) end
 drawFunctions.right = function (markedText) return drawFunctions.default(markedText, 1) end
 drawFunctions.center = function (markedText) return drawFunctions.default(markedText, 0) end
+drawFunctions.middle = drawFunctions.center
 
----@class MarkedText
+---@class MarkerMarkedText
 local markedTextMetatable = {}
 markedTextMetatable.__index = markedTextMetatable
 
@@ -505,18 +558,22 @@ local defaultFont = love.graphics.newFont()
 ---@param y? number The Y location to place the text at (Default is 0)
 ---@param maxWidth? number The maximum width the text can take up (Default is infinity)
 ---@param textAlign? MarkerTextAlign The horizontal alignment of the text (Default is "left")
----@return MarkedText markedText
-function marker.newMarkedText(str, font, x, y, maxWidth, textAlign)
+---@param verticalAlign? MarkerVerticalAlign The vertical alignment of the text (Default is "top")
+---@param boxHeight? number The reference height of a box this text lays in, used for vertical alignment. (Default is 0 - aligns relatively to X and Y)
+---@return MarkerMarkedText markedText
+function marker.newMarkedText(str, font, x, y, maxWidth, textAlign, verticalAlign, boxHeight)
     str = str or ""
     font = font or defaultFont
     x = x or 0
     y = y or 0
     maxWidth = maxWidth or math.huge
     textAlign = textAlign or "left"
+    verticalAlign = verticalAlign or "top"
+    boxHeight = boxHeight or 0
 
     local paramString, strippedString = stringToTagString(str)
 
-    ---@type MarkedText
+    ---@type MarkerMarkedText
     local markedText = {
         x = x,
         y = y,
@@ -524,6 +581,8 @@ function marker.newMarkedText(str, font, x, y, maxWidth, textAlign)
         maxWidth = maxWidth,
         time = 0,
         textAlign = textAlign,
+        verticalAlign = verticalAlign,
+        boxHeight = boxHeight,
         rawString = str,
         strippedString = strippedString,
         paramString = paramString,
