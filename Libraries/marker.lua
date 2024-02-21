@@ -138,6 +138,69 @@ marker.charEffects.shatter = function (char, arg, time, charIndex, charPrevious)
     love.math.setRandomSeed(seedPrevious)
 end
 
+marker.textEffectsOrder = {
+    "typewriter"
+}
+
+marker.textEffects = {}
+
+local typePauseChars = {
+    ["."] = true,
+    [","] = true,
+    [":"] = true,
+    [";"] = true
+}
+local typeSkipChars = {
+    [""] = true,
+    [" "] = true,
+    ["\n"] = true
+}
+---@param collapsedParamString MarkerParamCharCollapsed[]
+---@param time number
+marker.textEffects.typewriter = function (collapsedParamString, time)
+    local timeAccumulated = 0
+    local typeInstant = false ---@type any
+    for charIndex = 1, #collapsedParamString do
+        local char = collapsedParamString[charIndex]
+        local nextChar = collapsedParamString[charIndex+1]
+        local paramsUsed = char.paramsUsed
+
+        typeInstant = paramsUsed["typewriter-appear"]
+        local speedMult = tonumber(typeInstant)
+
+        if paramsUsed.typewriter then
+            local arg = paramsUsed.typewriter
+            local num = 1 / ((tonumber(arg) or 1) * 10)
+            if speedMult then num = num / speedMult end
+            if typeSkipChars[char.text] then num = 0 end
+            if typePauseChars[char.text] then num = num * 2 end
+
+            local appearProgress
+            if typeInstant then
+                appearProgress = (time - timeAccumulated) / num
+                appearProgress = math.max(0, appearProgress)
+                appearProgress = math.min(1, appearProgress)
+                if typeInstant and not speedMult then
+                    appearProgress = math.floor(appearProgress)
+                end
+
+                if nextChar and nextChar.paramsUsed["typewriter-appear"] then
+                    num = 0
+                end
+            end
+
+            if appearProgress then
+                char.color = {char.color[1], char.color[2], char.color[3], appearProgress}
+            end
+
+            if timeAccumulated > time then
+                char.text = ""
+            end
+            timeAccumulated = timeAccumulated + num
+        end
+    end
+end
+
 ----------------------------------------------------------------------------------------------------
 -- Generic local functions ------------------------------------------------------------------------
 ----------------------------------------------------------------------------------------------------
@@ -343,17 +406,23 @@ end
 
 ---@param paramString MarkerParamChar[]
 ---@return MarkerParamCharCollapsed[]
+---@return MarkerParamDictionary
 local function collapseParamString(paramString, time)
     ---@type MarkerParamCharCollapsed[]
     local collapsedParamString = {}
     local stringIndex = 1
     local charsEncountered = 0
     local collapsedCharPrevious
+    local effectsEncountered = {}
     while stringIndex <= #paramString do
         charsEncountered = charsEncountered + 1
 
         local paramChar = paramString[stringIndex]
         local charParams = paramChar.params
+
+        for eff, value in pairs(charParams) do
+            effectsEncountered[eff] = value
+        end
 
         local collapsedParamChar = {
             text = paramChar.text,
@@ -377,7 +446,7 @@ local function collapseParamString(paramString, time)
         stringIndex = stringIndex + 1
         collapsedCharPrevious = collapsedParamChar
     end
-    return collapsedParamString
+    return collapsedParamString, effectsEncountered
 end
 
 ----------------------------------------------------------------------------------------------------
@@ -489,7 +558,7 @@ function drawFunctions.default(markedText, alignment)
     local font = markedText.font
     local lineHeight = font:getHeight()
 
-    local collapsedParamString = collapseParamString(paramString, markedText.time)
+    local collapsedParamString, effectsEncountered = collapseParamString(paramString, markedText.time)
 
     local stringEndFound = false
     local lineCharacterIndex = 1
@@ -524,6 +593,15 @@ function drawFunctions.default(markedText, alignment)
 
     local textHeight = lineHeight * (lineIndex - 1)
     local verticalAlign = verticalAlignEnum[markedText.verticalAlign]
+
+    -- Apply text effects
+    for textEffectIndex = 1, #marker.textEffectsOrder do
+        local textEffectName = marker.textEffectsOrder[textEffectIndex]
+        if effectsEncountered[textEffectName] then
+            marker.textEffects[textEffectName](collapsedParamString, markedText.time)
+        end
+    end
+
     renderCollapsedParamString(collapsedParamString, markedText.boxHeight, textHeight, verticalAlign, font)
 end
 
