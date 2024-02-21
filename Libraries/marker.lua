@@ -134,6 +134,8 @@ marker.charEffects.shatter = function (char, arg, time, charIndex, charPrevious)
     local yOffset = math.floor((love.math.random() - 0.5) * amount + 0.5)
     char.xOffset = char.xOffset + xOffset
     char.yOffset = char.yOffset + yOffset
+
+    love.math.setRandomSeed(seedPrevious)
 end
 
 ----------------------------------------------------------------------------------------------------
@@ -544,6 +546,25 @@ end
 ---@param dt number
 function markedTextMetatable:update(dt)
     self.time = self.time + dt
+end
+
+--- Calculates and returns the width and height the text takes up
+---@return number
+---@return number
+function markedTextMetatable:getSize()
+    local width = 0
+    local height = 0
+    local collapsedParamString = collapseParamString(self.paramString, self.time)
+    local lineCharacterIndex = 1
+    local stringEndFound = false
+    while not stringEndFound do
+        local lineCharacterCount, lineWidth, lineOverflowed
+        lineCharacterCount, lineWidth, lineOverflowed, stringEndFound = extractLine(collapsedParamString, lineCharacterIndex, self.font, self.maxWidth)
+        lineCharacterIndex = lineCharacterIndex + lineCharacterCount
+        width = math.max(width, lineWidth)
+        height = height + self.font:getHeight()
+    end
+    return width, height
 end
 
 --- Parses a new string and sets the MarkedText to it
