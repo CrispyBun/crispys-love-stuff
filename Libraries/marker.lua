@@ -9,6 +9,13 @@ marker.colors = {
     blue = {0.2, 0.2, 1},
 }
 
+--- Arbitrary callbacks triggered by some events from marker texts, you can add functions listening to them into this table
+---@type table<string, fun(data: {charTable?: Marker.ParamCharCollapsed})>
+marker.callbacks = {}
+
+-- Defined callbacks are:
+-- 'typewriter' (triggers on each new character written by the typewriter text effect)
+
 local paramUnsetKeywords = {"none", "unset", "/"}
 
 ----------------------------------------------------------------------------------------------------
@@ -41,6 +48,7 @@ local paramUnsetKeywords = {"none", "unset", "/"}
 ---@field font love.Font The font used for drawing the text
 ---@field maxWidth number The maximum width the text can take up
 ---@field time number The accumulated elapsed deltatime
+---@field timePrevious number The time value at the time of the previous update
 ---@field textAlign Marker.TextAlign
 ---@field verticalAlign Marker.VerticalAlign
 ---@field boxHeight number
@@ -147,7 +155,7 @@ marker.textEffectsOrder = {
 }
 
 -- Effects applied on the entire text as a whole, only a few effects need to see and modify the full text
----@type table<string, fun(collapsedParamString: Marker.ParamCharCollapsed[], time: number)>
+---@type table<string, fun(collapsedParamString: Marker.ParamCharCollapsed[], time: number, timePrevious: number)>
 marker.textEffects = {}
 
 local typePauseChars = {
@@ -161,7 +169,7 @@ local typeSkipChars = {
     [" "] = true,
     ["\n"] = true
 }
-marker.textEffects.typewriter = function (collapsedParamString, time)
+marker.textEffects.typewriter = function (collapsedParamString, time, timePrevious)
     local timeAccumulated = 0
     local typeInstant = false ---@type any
     for charIndex = 1, #collapsedParamString do
@@ -199,6 +207,10 @@ marker.textEffects.typewriter = function (collapsedParamString, time)
 
             if timeAccumulated > time then
                 char.text = ""
+            else
+                if timeAccumulated > timePrevious and num > 0 and not typeInstant then
+                    if marker.callbacks.typewriter then marker.callbacks.typewriter({charTable = char}) end
+                end
             end
             timeAccumulated = timeAccumulated + num
         end
@@ -602,7 +614,7 @@ function drawFunctions.default(markedText, alignment)
     for textEffectIndex = 1, #marker.textEffectsOrder do
         local textEffectName = marker.textEffectsOrder[textEffectIndex]
         if effectsEncountered[textEffectName] then
-            marker.textEffects[textEffectName](collapsedParamString, markedText.time)
+            marker.textEffects[textEffectName](collapsedParamString, markedText.time, markedText.timePrevious)
         end
     end
 
@@ -627,6 +639,7 @@ end
 -- Updates the text to animate
 ---@param dt number
 function markedTextMetatable:update(dt)
+    self.timePrevious = self.time
     self.time = self.time + dt
 end
 
@@ -689,6 +702,7 @@ function marker.newMarkedText(str, font, x, y, maxWidth, textAlign, verticalAlig
         font = font,
         maxWidth = maxWidth,
         time = 0,
+        timePrevious = 0,
         textAlign = textAlign,
         verticalAlign = verticalAlign,
         boxHeight = boxHeight,
