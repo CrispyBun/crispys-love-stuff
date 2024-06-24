@@ -63,6 +63,7 @@ local paramUnsetKeywords = {"none", "unset", "/"}
 -- Text effects -----------------------------------------------------------------------------------
 ----------------------------------------------------------------------------------------------------
 
+-- Effects not added to the order will not be registered
 marker.charEffectsOrder = {
     "color",
     "tint",
@@ -75,6 +76,8 @@ marker.charEffectsOrder = {
     "corrupt"
 }
 
+-- Effects applied per character, most effects belong here
+---@type table<string, fun(char: MarkerParamCharCollapsed, arg: string, time: number, charIndex: integer, charPrevious?: MarkerParamCharCollapsed): MarkerParamCharCollapsed[]?>
 marker.charEffects = {}
 
 marker.charEffects.color = function (char, arg)
@@ -138,10 +141,13 @@ marker.charEffects.shatter = function (char, arg, time, charIndex, charPrevious)
     love.math.setRandomSeed(seedPrevious)
 end
 
+-- Text effects not added to the order will not be registered
 marker.textEffectsOrder = {
     "typewriter"
 }
 
+-- Effects applied on the entire text as a whole, only a few effects need to see and modify the full text
+---@type table<string, fun(collapsedParamString: MarkerParamCharCollapsed[], time: number)>
 marker.textEffects = {}
 
 local typePauseChars = {
@@ -155,8 +161,6 @@ local typeSkipChars = {
     [" "] = true,
     ["\n"] = true
 }
----@param collapsedParamString MarkerParamCharCollapsed[]
----@param time number
 marker.textEffects.typewriter = function (collapsedParamString, time)
     local timeAccumulated = 0
     local typeInstant = false ---@type any
