@@ -600,6 +600,20 @@ function drawFunctions.default(markedText, alignment, justify)
 
     local collapsedParamString, effectsEncountered = collapseParamString(paramString, markedText.time)
 
+    if maxWidth == math.huge then
+        local width = 0
+        local maxLineWidthFound = 0
+        for charIndex = 1, #collapsedParamString do
+            local char = collapsedParamString[charIndex].text
+            width = width + font:getWidth(char)
+            if char == "\n" or charIndex == #collapsedParamString then
+                maxLineWidthFound = math.max(maxLineWidthFound, width)
+                width = 0
+            end
+        end
+        maxWidth = maxLineWidthFound
+    end
+
     local stringEndFound = false
     local lineCharacterIndex = 1
     local lineIndex = 1
