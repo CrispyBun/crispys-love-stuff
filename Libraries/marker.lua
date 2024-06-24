@@ -15,47 +15,47 @@ local paramUnsetKeywords = {"none", "unset", "/"}
 -- Class definitions ------------------------------------------------------------------------------
 ----------------------------------------------------------------------------------------------------
 
----@class MarkerParamDictionary
+---@class Marker.ParamDictionary
 ---@field [string] string|false
 
----@class MarkerParamChar
+---@class Marker.ParamChar
 ---@field text string The string this character represents. Usually one character, but can actually be more, however, it will still act as one character and won't be able to be split.
----@field params MarkerParamDictionary The parameters and their values for this char
+---@field params Marker.ParamDictionary The parameters and their values for this char
 
----@alias MarkerTextAlign
+---@alias Marker.TextAlign
 ---| '"default' # A default alignment. Identical to "left" (but you should use "left" instead of "default")
 ---| '"left"' # Aligns text to the left horizontally
 ---| '"right"' # Aligns text to the right horizontally
 ---| '"center"' # Aligns text to the center horizontally
 ---| '"middle"' # Identical to "center"
 
----@alias MarkerVerticalAlign
+---@alias Marker.VerticalAlign
 ---| '"top"' # Aligns to top (This is the default)
 ---| '"middle"' # Aligns to the middle
 ---| '"center"' # Identical to "middle"
 ---| '"bottom"' # Aligns to bottom
 
----@class MarkerMarkedText
+---@class Marker.MarkedText
 ---@field x number The X location to draw the text at
 ---@field y number The Y location to draw the text at
 ---@field font love.Font The font used for drawing the text
 ---@field maxWidth number The maximum width the text can take up
 ---@field time number The accumulated elapsed deltatime
----@field textAlign MarkerTextAlign
----@field verticalAlign MarkerVerticalAlign
+---@field textAlign Marker.TextAlign
+---@field verticalAlign Marker.VerticalAlign
 ---@field boxHeight number
 ---@field doRelativeXAlign boolean
 ---
 ---@field rawString string The string used in creation of this markedText, with no processing
 ---@field strippedString string The raw string stripped of its tags, leaving only plaintext
----@field paramString MarkerParamChar[] The full paramString
+---@field paramString Marker.ParamChar[] The full paramString
 
----@class MarkerParamCharCollapsed -- Collapsed by the draw function into clear instructions for how to draw it, instead of params
+---@class Marker.ParamCharCollapsed -- Collapsed by the draw function into clear instructions for how to draw it, instead of params
 ---@field text string
 ---@field xOffset number
 ---@field yOffset number
 ---@field color number[]
----@field paramsUsed MarkerParamDictionary The params used in this char to collapse it
+---@field paramsUsed Marker.ParamDictionary The params used in this char to collapse it
 ---@field x? number
 ---@field y? number
 
@@ -77,7 +77,7 @@ marker.charEffectsOrder = {
 }
 
 -- Effects applied per character, most effects belong here
----@type table<string, fun(char: MarkerParamCharCollapsed, arg: string, time: number, charIndex: integer, charPrevious?: MarkerParamCharCollapsed): MarkerParamCharCollapsed[]?>
+---@type table<string, fun(char: Marker.ParamCharCollapsed, arg: string, time: number, charIndex: integer, charPrevious?: Marker.ParamCharCollapsed): Marker.ParamCharCollapsed[]?>
 marker.charEffects = {}
 
 marker.charEffects.color = function (char, arg)
@@ -147,7 +147,7 @@ marker.textEffectsOrder = {
 }
 
 -- Effects applied on the entire text as a whole, only a few effects need to see and modify the full text
----@type table<string, fun(collapsedParamString: MarkerParamCharCollapsed[], time: number)>
+---@type table<string, fun(collapsedParamString: Marker.ParamCharCollapsed[], time: number)>
 marker.textEffects = {}
 
 local typePauseChars = {
@@ -279,7 +279,7 @@ local function findTagInString(str, searchStart)
 end
 
 ---@param str string The tag text (excluding the [[ and ]] at the start and end)
----@return MarkerParamDictionary params Table of params (as keys) and their values as strings, or as false if the param has been unset
+---@return Marker.ParamDictionary params Table of params (as keys) and their values as strings, or as false if the param has been unset
 ---@return boolean glueTagged
 local function decodeTag(str)
     local glueTagged = false
@@ -288,7 +288,7 @@ local function decodeTag(str)
         glueTagged = true
     end
 
-    ---@type MarkerParamDictionary
+    ---@type Marker.ParamDictionary
     local params = {}
 
     for param, value in string.gmatch(str, "([^:;]+):([^;]+)") do
@@ -308,9 +308,9 @@ end
 --- Takes a string and removes all tags from it, returning the stripped string and a table of the parsed tags instead
 ---@param str string The string to parse
 ---@return string strippedString The string without any tags
----@return table<integer, MarkerParamDictionary> params A dictionary with character indices and the params that start there
+---@return table<integer, Marker.ParamDictionary> params A dictionary with character indices and the params that start there
 local function stripStringOfTags(str)
-    ---@type table<integer, MarkerParamDictionary>
+    ---@type table<integer, Marker.ParamDictionary>
     local tags = {}
     local previousTag = nil
     local searchStart = 1
@@ -349,10 +349,10 @@ local function stripStringOfTags(str)
 end
 
 ---@param strippedString string
----@param params table<integer, MarkerParamDictionary>
----@return MarkerParamChar[]
+---@param params table<integer, Marker.ParamDictionary>
+---@return Marker.ParamChar[]
 local function convertStrippedStringToParamString(strippedString, params)
-    ---@type MarkerParamChar[]
+    ---@type Marker.ParamChar[]
     local tagString = {}
     local currentParams = {}
     for pos, char in utf8.codes(strippedString) do
@@ -368,7 +368,7 @@ end
 
 --- Converts a string to a paramString
 ---@param str string The input string
----@return MarkerParamChar[] paramString The output paramString
+---@return Marker.ParamChar[] paramString The output paramString
 ---@return string strippedString The input string stripped of all of its tags
 local function stringToTagString(str)
     local strippedString, params = stripStringOfTags(str)
@@ -408,11 +408,11 @@ local function applyCharEffectsOnCollapsedParamChar(collapsedParamChar, time, st
     return replacementChars
 end
 
----@param paramString MarkerParamChar[]
----@return MarkerParamCharCollapsed[]
----@return MarkerParamDictionary
+---@param paramString Marker.ParamChar[]
+---@return Marker.ParamCharCollapsed[]
+---@return Marker.ParamDictionary
 local function collapseParamString(paramString, time)
-    ---@type MarkerParamCharCollapsed[]
+    ---@type Marker.ParamCharCollapsed[]
     local collapsedParamString = {}
     local stringIndex = 1
     local charsEncountered = 0
@@ -461,7 +461,7 @@ end
 local drawFunctions = {}
 
 ---Assumes the x and y of the characters have been set
----@param collapsedParamString MarkerParamCharCollapsed[]
+---@param collapsedParamString Marker.ParamCharCollapsed[]
 ---@param boxHeight number
 ---@param textHeight number
 ---@param verticalAlign number
@@ -550,7 +550,7 @@ function drawFunctions.invalid(markedText)
     love.graphics.setFont(fontPrevious)
 end
 
----@param markedText MarkerMarkedText
+---@param markedText Marker.MarkedText
 ---@param alignment? number
 function drawFunctions.default(markedText, alignment)
     alignment = alignment or -1
@@ -614,7 +614,7 @@ drawFunctions.right = function (markedText) return drawFunctions.default(markedT
 drawFunctions.center = function (markedText) return drawFunctions.default(markedText, 0) end
 drawFunctions.middle = drawFunctions.center
 
----@class MarkerMarkedText
+---@class Marker.MarkedText
 local markedTextMetatable = {}
 markedTextMetatable.__index = markedTextMetatable
 
@@ -665,10 +665,10 @@ local defaultFont = love.graphics.newFont()
 ---@param x? number The X location to place the text at (Default is 0)
 ---@param y? number The Y location to place the text at (Default is 0)
 ---@param maxWidth? number The maximum width the text can take up (Default is infinity)
----@param textAlign? MarkerTextAlign The horizontal alignment of the text (Default is "left")
----@param verticalAlign? MarkerVerticalAlign The vertical alignment of the text (Default is "top")
+---@param textAlign? Marker.TextAlign The horizontal alignment of the text (Default is "left")
+---@param verticalAlign? Marker.VerticalAlign The vertical alignment of the text (Default is "top")
 ---@param boxHeight? number The reference height of a box this text lays in, used for vertical alignment. (Default is 0 - aligns relatively to X and Y)
----@return MarkerMarkedText markedText
+---@return Marker.MarkedText markedText
 function marker.newMarkedText(str, font, x, y, maxWidth, textAlign, verticalAlign, boxHeight, doRelativeXAlign)
     str = str or ""
     font = font or defaultFont
@@ -682,7 +682,7 @@ function marker.newMarkedText(str, font, x, y, maxWidth, textAlign, verticalAlig
 
     local paramString, strippedString = stringToTagString(str)
 
-    ---@type MarkerMarkedText
+    ---@type Marker.MarkedText
     local markedText = {
         x = x,
         y = y,
