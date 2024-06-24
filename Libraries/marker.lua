@@ -35,6 +35,8 @@ local paramUnsetKeywords = {"none", "unset", "/"}
 ---| '"right"' # Aligns text to the right horizontally
 ---| '"center"' # Aligns text to the center horizontally
 ---| '"middle"' # Identical to "center"
+---| '"justify"' # Spreads lines to use full container width
+---| '"block"' # Identical to "justify"
 
 ---@alias Marker.VerticalAlign
 ---| '"top"' # Aligns to top (This is the default)
@@ -257,6 +259,26 @@ local function isParamUnsetKeyword(str)
         if str == paramUnsetKeywords[i] then return true end
     end
     return false
+end
+
+---@param chars Marker.ParamCharCollapsed[]
+---@param i? integer
+---@param j? integer
+---@return integer
+local function countSpaces(chars, i, j)
+    i = i or 1
+    j = j or #chars
+
+    i = math.max(i, 0)
+    j = math.min(j, #chars)
+
+    local count = 0
+    for charIndex = i, j do
+        local char = chars[charIndex]
+        if char.text == " " then count = count + 1 end
+    end
+
+    return count
 end
 
 ----------------------------------------------------------------------------------------------------
@@ -564,8 +586,10 @@ end
 
 ---@param markedText Marker.MarkedText
 ---@param alignment? number
-function drawFunctions.default(markedText, alignment)
+---@param justify? boolean
+function drawFunctions.default(markedText, alignment, justify)
     alignment = alignment or -1
+    justify = justify or false
 
     local x = markedText.x
     local y = markedText.y
@@ -590,6 +614,12 @@ function drawFunctions.default(markedText, alignment)
         local lineUnusedSpace = maxWidth - lineWidth
         local alignmentOffset = (lineUnusedSpace + lineUnusedSpace * alignment)/2
         local lineWidthProgress = 0
+        local spaceCount = 0
+
+        local justifyGapGrow
+        if justify then justifyGapGrow = lineUnusedSpace / (countSpaces(collapsedParamString, lineCharacterIndex, lineCharacterIndex + lineCharacterCount) - 1) end
+        if justify and lineOverflowed then alignmentOffset = 0 end
+
         for charIndex = lineCharacterIndex, lineCharacterIndex + lineCharacterCount - 1 do
             local paramChar = collapsedParamString[charIndex]
             local charText = paramChar.text
@@ -597,8 +627,14 @@ function drawFunctions.default(markedText, alignment)
             local charX = x + lineWidthProgress + alignmentOffset + textBlockOffset
             local charY = y + (lineIndex - 1) * lineHeight
 
+            if justifyGapGrow and lineOverflowed then
+                charX = charX + justifyGapGrow * spaceCount
+            end
+
             paramChar.x = charX
             paramChar.y = charY
+
+            if paramChar.text == " " then spaceCount = spaceCount + 1 end
 
             lineWidthProgress = lineWidthProgress + font:getWidth(charText)
         end
@@ -625,6 +661,8 @@ drawFunctions.left = function (markedText) return drawFunctions.default(markedTe
 drawFunctions.right = function (markedText) return drawFunctions.default(markedText, 1) end
 drawFunctions.center = function (markedText) return drawFunctions.default(markedText, 0) end
 drawFunctions.middle = drawFunctions.center
+drawFunctions.justify = function (markedText) return drawFunctions.default(markedText, 0, true) end
+drawFunctions.block = drawFunctions.justify
 
 ---@class Marker.MarkedText
 local markedTextMetatable = {}
@@ -681,6 +719,7 @@ local defaultFont = love.graphics.newFont()
 ---@param textAlign? Marker.TextAlign The horizontal alignment of the text (Default is "left")
 ---@param verticalAlign? Marker.VerticalAlign The vertical alignment of the text (Default is "top")
 ---@param boxHeight? number The reference height of a box this text lays in, used for vertical alignment. (Default is 0 - aligns relatively to X and Y)
+---@param doRelativeXAlign? boolean If the alignment in the X axis should be done relatively to the X and Y coordinate
 ---@return Marker.MarkedText markedText
 function marker.newMarkedText(str, font, x, y, maxWidth, textAlign, verticalAlign, boxHeight, doRelativeXAlign)
     str = str or ""
