@@ -9,6 +9,12 @@ marker.colors = {
     blue = {0.2, 0.2, 1},
 }
 
+-- Add the names of the emojis and the emojis they refer to
+marker.emojiNames = {
+    -- grinning = "😁"
+    -- grinning = "\xF0\x9F\x98\x81"
+}
+
 --- Arbitrary callbacks triggered by some events from marker texts, you can add functions listening to them into this table
 ---@type table<string, fun(data: {charTable?: Marker.ParamCharCollapsed})>
 marker.callbacks = {}
@@ -400,11 +406,23 @@ local function convertStrippedStringToParamString(strippedString, params)
     return tagString
 end
 
+--- Converts the emojis known to it to their encoded UTF-8 values
+---@param str string
+---@return string
+local function convertEmojis(str)
+    for emojiName, emojiCode in pairs(marker.emojiNames) do
+        local pattern = ":" .. emojiName .. ":"
+        str = str:gsub(pattern, emojiCode)
+    end
+    return str
+end
+
 --- Converts a string to a paramString
 ---@param str string The input string
 ---@return Marker.ParamChar[] paramString The output paramString
 ---@return string strippedString The input string stripped of all of its tags
 local function stringToTagString(str)
+    str = convertEmojis(str)
     local strippedString, params = stripStringOfTags(str)
     local paramString = convertStrippedStringToParamString(strippedString, params)
     return paramString, strippedString
