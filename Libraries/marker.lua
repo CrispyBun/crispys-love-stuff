@@ -67,6 +67,9 @@ local paramUnsetKeywords = {"none", "unset", "/"}
 ---@field rawString string The string used in creation of this markedText, with no processing
 ---@field strippedString string The raw string stripped of its tags, leaving only plaintext
 ---@field paramString Marker.ParamChar[] The full paramString
+---
+---@field cachedWidth number?
+---@field cachedHeight number?
 
 ---@class Marker.ParamCharCollapsed -- Collapsed by the draw function into clear instructions for how to draw it, instead of params
 ---@field text string
@@ -777,10 +780,19 @@ function markedTextMetatable:update(dt)
     self.time = self.time + dt
 end
 
+--- Returns the X and Y coordinates of the text
+---@return number
+---@return number
+function markedTextMetatable:getPosition()
+    return self.x, self.y
+end
+
 --- Calculates and returns the width and height the text takes up
 ---@return number
 ---@return number
 function markedTextMetatable:getSize()
+    if self.cachedWidth and self.cachedHeight then return self.cachedWidth, self.cachedHeight end
+
     local width = 0
     local height = 0
     local collapsedParamString = collapseParamString(self.paramString, self.time)
@@ -793,7 +805,17 @@ function markedTextMetatable:getSize()
         width = math.max(width, lineWidth)
         height = height + marker.functions.getCharHeight(self.font)
     end
+    self.cachedWidth = width
+    self.cachedHeight = height
     return width, height
+end
+
+--- Changes the text's position
+---@param x number? The X coordinate (Default is 0)
+---@param y number? The Y coordinate (Default is x)
+function markedTextMetatable:setPosition(x, y)
+    self.x = x or 0
+    self.y = y or self.x
 end
 
 --- Parses a new string and sets the MarkedText to it
@@ -803,6 +825,8 @@ function markedTextMetatable:setText(str)
     self.rawString = str
     self.strippedString = strippedString
     self.paramString = paramString
+    self.cachedWidth = nil
+    self.cachedHeight = nil
 end
 
 local defaultFont = marker.functions.newFont()
