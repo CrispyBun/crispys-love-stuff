@@ -1,5 +1,6 @@
 .vscode/
 .DS_Store
 Assets/
+Profiler/
 conf.lua
 main.lua
