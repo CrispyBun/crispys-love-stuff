@@ -107,10 +107,14 @@ end
 marker.charEffects.tint = marker.charEffects.color -- Just a color on top of color
 
 marker.charEffects.wave = function (char, arg, time, charIndex)
+    if char.paramsUsed._GLUE then charIndex = 1 end
+
     local amount = tonumber(arg) or 1
     char.yOffset = char.yOffset + math.sin((time * 10) - (charIndex / 2)) * amount
 end
 marker.charEffects.harmonica = function (char, arg, time, charIndex)
+    if char.paramsUsed._GLUE then charIndex = 1 end
+
     local amount = tonumber(arg)
     amount = amount or 1
     char.xOffset = char.xOffset + math.sin((time * 10) - (charIndex / 2)) * amount
@@ -134,6 +138,8 @@ end
 
 local corruptChars = {'#', '$', '%', '&', '@', '=', '?', '6', '<', '>'}
 marker.charEffects.corrupt = function (char, arg, time, charIndex, charPrevious)
+    if char.paramsUsed._GLUE then char.text = "a" end
+
     local speed = tonumber(arg) or 1
     local progress = math.floor(time * 20 * speed)
 
@@ -374,6 +380,7 @@ local function stripStringOfTags(str)
             local decodedTag, glueTagged = decodeTag(tagText)
             for param, value in pairs(decodedTag) do
                 currentTag[param] = value and value or nil -- Convert falsey values to nil to remove them from the table fully
+                currentTag._GLUE = glueTagged
             end
             tags[tagStart] = currentTag
             previousTag = currentTag
