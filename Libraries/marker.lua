@@ -50,10 +50,12 @@ local paramUnsetKeywords = {"none", "unset", "/"}
 ---| '"center"' # Identical to "middle"
 ---| '"bottom"' # Aligns to bottom
 
+---@alias Marker.Font love.Font|table
+
 ---@class Marker.MarkedText
 ---@field x number The X location to draw the text at
 ---@field y number The Y location to draw the text at
----@field font love.Font The font used for drawing the text
+---@field font Marker.Font The font used for drawing the text
 ---@field maxWidth number The maximum width the text can take up
 ---@field time number The accumulated elapsed deltatime
 ---@field timePrevious number The time value at the time of the previous update
@@ -132,29 +134,29 @@ marker.charEffects.corrupt = function (char, arg, time, charIndex, charPrevious)
     local speed = tonumber(arg) or 1
     local progress = math.floor(time * 20 * speed)
 
-    local seedPrevious = love.math.getRandomSeed()
+    local seedPrevious = marker.functions.getRandomSeed()
     local charSeed = utf8.codepoint(char.text) + progress
-    love.math.setRandomSeed(charSeed)
+    marker.functions.setRandomSeed(charSeed)
 
-    local pickedCharIndex = love.math.random(1, #corruptChars)
+    local pickedCharIndex = marker.functions.random(1, #corruptChars)
 
     char.text = corruptChars[pickedCharIndex]
-    love.math.setRandomSeed(seedPrevious)
+    marker.functions.setRandomSeed(seedPrevious)
 end
 
 marker.charEffects.shatter = function (char, arg, time, charIndex, charPrevious)
     local amount = (tonumber(arg) or 1) * 4
 
-    local seedPrevious = love.math.getRandomSeed()
+    local seedPrevious = marker.functions.getRandomSeed()
     local charSeed = utf8.codepoint(char.text) + charIndex
-    love.math.setRandomSeed(charSeed)
+    marker.functions.setRandomSeed(charSeed)
 
-    local xOffset = math.floor((love.math.random() - 0.5) * amount + 0.5)
-    local yOffset = math.floor((love.math.random() - 0.5) * amount + 0.5)
+    local xOffset = math.floor((marker.functions.random() - 0.5) * amount + 0.5)
+    local yOffset = math.floor((marker.functions.random() - 0.5) * amount + 0.5)
     char.xOffset = char.xOffset + xOffset
     char.yOffset = char.yOffset + yOffset
 
-    love.math.setRandomSeed(seedPrevious)
+    marker.functions.setRandomSeed(seedPrevious)
 end
 
 -- Text effects not added to the order will not be registered
@@ -506,6 +508,68 @@ local function collapseParamString(paramString, time)
 end
 
 ----------------------------------------------------------------------------------------------------
+-- Mild abstraction from LÖVE ----------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------
+
+local love = love
+
+---@type table<string, function>
+marker.functions = {}
+
+if love then
+    marker.functions.getRandomSeed = love.math.getRandomSeed
+    marker.functions.setRandomSeed = love.math.setRandomSeed
+    marker.functions.random = love.math.random
+
+    marker.functions.getFont = love.graphics.getFont
+    marker.functions.setFont = love.graphics.setFont
+    marker.functions.getColor = love.graphics.getColor
+    marker.functions.setColor = love.graphics.setColor
+
+    marker.functions.newFont = love.graphics.newFont
+
+    marker.functions.getCharWidth = function (font, text) return font:getWidth(text) end
+    marker.functions.getCharHeight = function (font) return font:getHeight() end
+    marker.functions.drawChar = function (font, text, x, y) return love.graphics.print(text, x, y) end -- font discarded, it was already set in setFont()
+else
+    local currentSeed = os.time()
+    local currentFont = {}
+    local currentColor = {1, 1, 1, 1}
+
+    marker.functions.getRandomSeed = function () return currentSeed end
+    marker.functions.setRandomSeed = function (seed)
+        currentSeed = seed
+        math.randomseed(seed)
+    end
+    marker.functions.random = math.random
+
+    marker.functions.getFont = function () return currentFont end
+    marker.functions.setFont = function (font) currentFont = font end
+    marker.functions.getColor = function () return currentColor[1], currentColor[2], currentColor[3], currentColor[4] end
+    marker.functions.setColor = function (...) -- accepts both r, g, b, a and {r, g, b, a}
+        local colors = {...}
+        if type(colors[1]) == "table" then
+            local color = colors[1]
+            currentColor[1] = color[1] or 1
+            currentColor[2] = color[2] or 1
+            currentColor[3] = color[3] or 1
+            currentColor[4] = color[4] or 1
+            return
+        end
+        currentColor[1] = colors[1] or 1
+        currentColor[2] = colors[2] or 1
+        currentColor[3] = colors[3] or 1
+        currentColor[4] = colors[4] or 1
+    end
+
+    marker.functions.newFont = function () return {} end
+
+    marker.functions.getCharWidth = function (font, text) return 1 end
+    marker.functions.getCharHeight = function (font) return 1 end
+    marker.functions.drawChar = function (font, text, x, y) end -- usually draws just a glyph, but can draw full strings of text
+end
+
+----------------------------------------------------------------------------------------------------
 -- The markedText class ----------------------------------------------------------------------------
 ----------------------------------------------------------------------------------------------------
 
@@ -517,14 +581,14 @@ local drawFunctions = {}
 ---@param boxHeight number
 ---@param textHeight number
 ---@param verticalAlign number
----@param font love.Font
+---@param font Marker.Font
 local function renderCollapsedParamString(collapsedParamString, boxHeight, textHeight, verticalAlign, font)
     local textUnusedSpace = boxHeight - textHeight
     local verticalAlignOffset = (textUnusedSpace + textUnusedSpace * verticalAlign)/2
 
-    local fontPrevious = love.graphics.getFont()
-    local cr, cg, cb, ca = love.graphics.getColor()
-    love.graphics.setFont(font)
+    local fontPrevious = marker.functions.getFont()
+    local cr, cg, cb, ca = marker.functions.getColor()
+    marker.functions.setFont(font)
     for paramCharIndex = 1, #collapsedParamString do
         local paramChar = collapsedParamString[paramCharIndex]
         local charX = paramChar.x
@@ -537,11 +601,11 @@ local function renderCollapsedParamString(collapsedParamString, boxHeight, textH
         charX = math.floor(charX + charXOffset)
         charY = math.floor(charY + charYOffset + verticalAlignOffset)
 
-        love.graphics.setColor(charColor)
-        love.graphics.print(charText, charX, charY)
+        marker.functions.setColor(charColor)
+        marker.functions.drawChar(font, charText, charX, charY)
     end
-    love.graphics.setFont(fontPrevious)
-    love.graphics.setColor(cr, cg, cb, ca)
+    marker.functions.setFont(fontPrevious)
+    marker.functions.setColor(cr, cg, cb, ca)
 end
 
 local function extractLine(collapsedParamString, lineCharacterIndex, font, maxWidth)
@@ -568,7 +632,7 @@ local function extractLine(collapsedParamString, lineCharacterIndex, font, maxWi
             lineWidthUntilLastWhitespace = lineWidth
         end
 
-        local charWidth = font:getWidth(paramChar.text)
+        local charWidth = marker.functions.getCharWidth(font, paramChar.text)
         if lineWidth + charWidth > maxWidth and lineCharacterCount > 0 then
             -- We've reached max width, + one character per line minimum to avoid an infinite loop
             lineOverflowed = true
@@ -596,10 +660,10 @@ local verticalAlignEnum = {
 function drawFunctions.invalid(markedText)
     local x = markedText.x
     local y = markedText.y
-    local fontPrevious = love.graphics.getFont()
-    love.graphics.setFont(markedText.font)
-    love.graphics.print("Invalid text align property: '" .. tostring(markedText.textAlign) .. "'", x, y)
-    love.graphics.setFont(fontPrevious)
+    local fontPrevious = marker.functions.getFont()
+    marker.functions.setFont(markedText.font)
+    marker.functions.drawChar(markedText.font, "Invalid text align property: '" .. tostring(markedText.textAlign) .. "'", x, y)
+    marker.functions.setFont(fontPrevious)
 end
 
 ---@param markedText Marker.MarkedText
@@ -614,7 +678,7 @@ function drawFunctions.default(markedText, alignment, justify)
     local maxWidth = markedText.maxWidth
     local paramString = markedText.paramString
     local font = markedText.font
-    local lineHeight = font:getHeight()
+    local lineHeight = marker.functions.getCharHeight(font)
 
     local collapsedParamString, effectsEncountered = collapseParamString(paramString, markedText.time)
 
@@ -623,7 +687,7 @@ function drawFunctions.default(markedText, alignment, justify)
         local maxLineWidthFound = 0
         for charIndex = 1, #collapsedParamString do
             local char = collapsedParamString[charIndex].text
-            width = width + font:getWidth(char)
+            width = width + marker.functions.getCharWidth(font, char)
             if char == "\n" or charIndex == #collapsedParamString then
                 maxLineWidthFound = math.max(maxLineWidthFound, width)
                 width = 0
@@ -668,7 +732,7 @@ function drawFunctions.default(markedText, alignment, justify)
 
             if paramChar.text == " " then spaceCount = spaceCount + 1 end
 
-            lineWidthProgress = lineWidthProgress + font:getWidth(charText)
+            lineWidthProgress = lineWidthProgress + marker.functions.getCharWidth(font, charText)
         end
 
         lineCharacterIndex = lineCharacterIndex + lineCharacterCount
@@ -727,7 +791,7 @@ function markedTextMetatable:getSize()
         lineCharacterCount, lineWidth, lineOverflowed, stringEndFound = extractLine(collapsedParamString, lineCharacterIndex, self.font, self.maxWidth)
         lineCharacterIndex = lineCharacterIndex + lineCharacterCount
         width = math.max(width, lineWidth)
-        height = height + self.font:getHeight()
+        height = height + marker.functions.getCharHeight(self.font)
     end
     return width, height
 end
@@ -741,10 +805,10 @@ function markedTextMetatable:setText(str)
     self.paramString = paramString
 end
 
-local defaultFont = love.graphics.newFont()
+local defaultFont = marker.functions.newFont()
 --- Creates a new MarkedText instance
 ---@param str? string The tagged string to parse and set the text to (Default is empty string)
----@param font? love.Font The font used to draw this text
+---@param font? Marker.Font The font used to draw this text
 ---@param x? number The X location to place the text at (Default is 0)
 ---@param y? number The Y location to place the text at (Default is 0)
 ---@param maxWidth? number The maximum width the text can take up (Default is infinity)
