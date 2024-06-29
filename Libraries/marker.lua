@@ -760,7 +760,7 @@ drawFunctions.left = function (markedText) return drawFunctions.default(markedTe
 drawFunctions.right = function (markedText) return drawFunctions.default(markedText, 1) end
 drawFunctions.center = function (markedText) return drawFunctions.default(markedText, 0) end
 drawFunctions.middle = drawFunctions.center
-drawFunctions.justify = function (markedText) return drawFunctions.default(markedText, 0, true) end
+drawFunctions.justify = function (markedText) return drawFunctions.default(markedText, -1, true) end
 drawFunctions.block = drawFunctions.justify
 
 ---@class Marker.MarkedText
