@@ -73,6 +73,7 @@ local paramUnsetKeywords = {"none", "unset", "/"}
 ---@field verticalAlign Marker.VerticalAlign
 ---@field boxHeight number
 ---@field doRelativeXAlign boolean
+---@field lineHeight number
 ---
 ---@field rawString string The string used in creation of this markedText, with no processing
 ---@field strippedString string The raw string stripped of its tags, leaving only plaintext
@@ -698,7 +699,7 @@ function drawFunctions.default(markedText, alignment, justify)
     local maxWidth = markedText.maxWidth
     local paramString = markedText.paramString
     local font = markedText.font
-    local lineHeight = marker.functions.getCharHeight(font)
+    local lineHeight = marker.functions.getCharHeight(font) + markedText.lineHeight
 
     local cursorX, cursorY = marker.cursorX, marker.cursorY
 
@@ -819,6 +820,8 @@ end
 function markedTextMetatable:getSize()
     if self.cachedWidth and self.cachedHeight then return self.cachedWidth, self.cachedHeight end
 
+    local lineHeight = marker.functions.getCharHeight(self.font) + self.lineHeight
+
     local width = 0
     local height = 0
     local collapsedParamString = collapseParamString(self.paramString, self.time)
@@ -830,7 +833,7 @@ function markedTextMetatable:getSize()
         lineCharacterCount, lineWidth, lineOverflowed, stringEndFound = extractLine(collapsedParamString, lineCharacterIndex, self.font, self.maxWidth)
         lineCharacterIndex = lineCharacterIndex + lineCharacterCount
         width = math.max(width, lineWidth)
-        height = height + marker.functions.getCharHeight(self.font)
+        height = height + lineHeight
 
         if lineOverflowed then
             lineBreakFound = true
@@ -873,10 +876,11 @@ local defaultFont = marker.functions.newFont()
 ---@param maxWidth? number The maximum width the text can take up (Default is infinity)
 ---@param textAlign? Marker.TextAlign The horizontal alignment of the text (Default is "left")
 ---@param verticalAlign? Marker.VerticalAlign The vertical alignment of the text (Default is "top")
----@param boxHeight? number The reference height of a box this text lays in, used for vertical alignment. (Default is 0 - aligns relatively to X and Y)
----@param doRelativeXAlign? boolean If the alignment in the X axis should be done relatively to the X and Y coordinate
+---@param boxHeight? number The reference height of a box this text lays in, used for vertical alignment. (Default is 0 - aligns relatively to the Y coordinate)
+---@param doRelativeXAlign? boolean If the alignment in the X axis should be done relatively to the X coordinate
+---@param lineHeight? number A change in the line height of the text (Default is 0)
 ---@return Marker.MarkedText markedText
-function marker.newMarkedText(str, font, x, y, maxWidth, textAlign, verticalAlign, boxHeight, doRelativeXAlign)
+function marker.newMarkedText(str, font, x, y, maxWidth, textAlign, verticalAlign, boxHeight, doRelativeXAlign, lineHeight)
     str = str or ""
     font = font or defaultFont
     x = x or 0
@@ -886,6 +890,7 @@ function marker.newMarkedText(str, font, x, y, maxWidth, textAlign, verticalAlig
     verticalAlign = verticalAlign or "top"
     boxHeight = boxHeight or 0
     doRelativeXAlign = doRelativeXAlign or false
+    lineHeight = lineHeight or 0
 
     local paramString, strippedString = stringToTagString(str)
 
@@ -904,6 +909,7 @@ function marker.newMarkedText(str, font, x, y, maxWidth, textAlign, verticalAlig
         rawString = str,
         strippedString = strippedString,
         paramString = paramString,
+        lineHeight = lineHeight
     }
 
     setmetatable(markedText, markedTextMetatable)
