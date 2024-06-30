@@ -16,7 +16,7 @@ marker.emojiNames = {
 }
 
 --- Arbitrary callbacks triggered by some events from marker texts, you can add functions listening to them into this table
----@type table<string, fun(data: {charTable?: Marker.ParamCharCollapsed})>
+---@type table<string, fun(paramChar: Marker.ParamCharCollapsed)>
 marker.callbacks = {}
 
 -- Defined callbacks are:
@@ -228,7 +228,7 @@ marker.textEffects.typewriter = function (collapsedParamString, time, timePrevio
                 char.text = ""
             else
                 if timeAccumulated > timePrevious and num > 0 and not typeInstant then
-                    if marker.callbacks.typewriter then marker.callbacks.typewriter({charTable = char}) end
+                    if marker.callbacks.typewriter then marker.callbacks.typewriter(char) end
                 end
             end
             timeAccumulated = timeAccumulated + num
