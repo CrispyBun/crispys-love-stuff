@@ -15,12 +15,22 @@ marker.emojiNames = {
     -- grinning = "\xF0\x9F\x98\x81"
 }
 
+-- Can be set to mouse position, used for mouseover callback
+marker.cursorX = nil ---@type number?
+marker.cursorY = nil ---@type number?
+function marker.setCursor(x, y)
+    if not x or not y then x, y = nil, nil end
+    marker.cursorX = x
+    marker.cursorY = y
+end
+
 --- Arbitrary callbacks triggered by some events from marker texts, you can add functions listening to them into this table
 ---@type table<string, fun(paramChar: Marker.ParamCharCollapsed)>
 marker.callbacks = {}
 
 -- Defined callbacks are:
 -- 'typewriter' (triggers on each new character written by the typewriter text effect)
+-- 'mouseover' (triggers each draw call where the mouse cursor is over a character)
 
 local paramUnsetKeywords = {"none", "unset", "/"}
 
@@ -690,6 +700,8 @@ function drawFunctions.default(markedText, alignment, justify)
     local font = markedText.font
     local lineHeight = marker.functions.getCharHeight(font)
 
+    local cursorX, cursorY = marker.cursorX, marker.cursorY
+
     local collapsedParamString, effectsEncountered = collapseParamString(paramString, markedText.time)
 
     if maxWidth == math.huge then
@@ -732,6 +744,7 @@ function drawFunctions.default(markedText, alignment, justify)
 
             local charX = x + lineWidthProgress + alignmentOffset + textBlockOffset
             local charY = y + (lineIndex - 1) * lineHeight
+            local charWidth = marker.functions.getCharWidth(font, charText)
 
             if justifyGapGrow and lineOverflowed then
                 charX = charX + justifyGapGrow * spaceCount
@@ -742,7 +755,13 @@ function drawFunctions.default(markedText, alignment, justify)
 
             if paramChar.text == " " then spaceCount = spaceCount + 1 end
 
-            lineWidthProgress = lineWidthProgress + marker.functions.getCharWidth(font, charText)
+            lineWidthProgress = lineWidthProgress + charWidth
+
+            if cursorX and cursorY then
+                if cursorX >= charX and cursorY >= charY and cursorX < charX + charWidth and cursorY < charY + lineHeight then
+                    if marker.callbacks.mouseover then marker.callbacks.mouseover(paramChar) end
+                end
+            end
         end
 
         lineCharacterIndex = lineCharacterIndex + lineCharacterCount
