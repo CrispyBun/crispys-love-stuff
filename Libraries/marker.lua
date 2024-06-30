@@ -805,12 +805,21 @@ function markedTextMetatable:getSize()
     local collapsedParamString = collapseParamString(self.paramString, self.time)
     local lineCharacterIndex = 1
     local stringEndFound = false
+    local lineBreakFound = false
     while not stringEndFound do
         local lineCharacterCount, lineWidth, lineOverflowed
         lineCharacterCount, lineWidth, lineOverflowed, stringEndFound = extractLine(collapsedParamString, lineCharacterIndex, self.font, self.maxWidth)
         lineCharacterIndex = lineCharacterIndex + lineCharacterCount
         width = math.max(width, lineWidth)
         height = height + marker.functions.getCharHeight(self.font)
+
+        if lineOverflowed then
+            lineBreakFound = true
+        end
+    end
+
+    if lineBreakFound and (self.textAlign == "justify" or self.textAlign == "block") then
+        width = self.maxWidth
     end
     self.cachedWidth = width
     self.cachedHeight = height
