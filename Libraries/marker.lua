@@ -737,6 +737,7 @@ function drawFunctions.default(markedText, alignment, justify)
 
         local justifyGapGrow
         if justify then justifyGapGrow = lineUnusedSpace / (countSpaces(collapsedParamString, lineCharacterIndex, lineCharacterIndex + lineCharacterCount) - 1) end
+        if justifyGapGrow == math.huge then justifyGapGrow = 0 end
         if justify and lineOverflowed then alignmentOffset = 0 end
 
         for charIndex = lineCharacterIndex, lineCharacterIndex + lineCharacterCount - 1 do
