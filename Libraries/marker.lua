@@ -529,6 +529,27 @@ local function collapseParamString(paramString, time)
 end
 
 ----------------------------------------------------------------------------------------------------
+-- Text effect helpers -----------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------
+
+marker.charEffectHelpers = {}
+
+---@param str string args
+---@return string[]
+marker.charEffectHelpers.splitArgs = function (str)
+    local parsedArgs = {}
+    for arg in str:gmatch("[^,]+") do
+        parsedArgs[#parsedArgs+1] = arg
+    end
+
+    if #parsedArgs == 0 then
+        parsedArgs[1] = ""
+    end
+
+    return parsedArgs
+end
+
+----------------------------------------------------------------------------------------------------
 -- Mild abstraction from LÖVE ----------------------------------------------------------------------
 ----------------------------------------------------------------------------------------------------
 
