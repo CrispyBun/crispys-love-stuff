@@ -103,6 +103,7 @@ marker.charEffectsOrder = {
     "wave",
     "harmonica",
     "shatter",
+    "shake",
 
     "text",
     "corrupt"
@@ -171,8 +172,28 @@ marker.charEffects.shatter = function (char, arg, time, charIndex, charPrevious)
     local charSeed = utf8.codepoint(char.text) + charIndex
     marker.functions.setRandomSeed(charSeed)
 
-    local xOffset = math.floor((marker.functions.random() - 0.5) * amount + 0.5)
-    local yOffset = math.floor((marker.functions.random() - 0.5) * amount + 0.5)
+    local xOffset = (marker.functions.random() - 0.5) * amount + 0.5
+    local yOffset = (marker.functions.random() - 0.5) * amount + 0.5
+    char.xOffset = char.xOffset + xOffset
+    char.yOffset = char.yOffset + yOffset
+
+    marker.functions.setRandomSeed(seedPrevious)
+end
+
+marker.charEffects.shake = function (char, arg, time, charIndex, charPrevious)
+    local args = marker.charEffectHelpers.splitArgs(arg)
+    local amount = (tonumber(args[1]) or 1) * 4
+    local speed = (tonumber(args[2]) or 1)
+
+    local progress = math.floor(time * 15 * speed)
+
+    local seedPrevious = marker.functions.getRandomSeed()
+    local charSeed = charIndex + progress
+    marker.functions.setRandomSeed(charSeed)
+
+    local xOffset = (marker.functions.random() - 0.5) * amount + 0.5
+    local yOffset = (marker.functions.random() - 0.5) * amount + 0.5
+    print(xOffset, yOffset)
     char.xOffset = char.xOffset + xOffset
     char.yOffset = char.yOffset + yOffset
 
