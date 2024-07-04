@@ -9,11 +9,15 @@ marker.colors = {
     blue = {0.2, 0.2, 1},
 }
 
--- Add the names of the emojis and the emojis they refer to
+-- Add the names of emojis and the emojis they refer to
 marker.emojiNames = {
     -- grinning = "😁"
     -- grinning = "\xF0\x9F\x98\x81"
 }
+
+-- Variables that can be referenced by the '[[var:*]]' tag
+---@type table<string, any>
+marker.textVariables = {}
 
 -- Can be set to mouse position, used for mouseover callback
 marker.cursorX = nil ---@type number?
@@ -106,6 +110,7 @@ marker.charEffectsOrder = {
     "shake",
 
     "text",
+    "var",
     "corrupt"
 }
 
@@ -133,19 +138,14 @@ marker.charEffects.harmonica = function (char, arg, time, charIndex)
 end
 
 marker.charEffects.text = function (char, arg, time, charIndex, charPrevious)
-    local replacementChars = {}
-    for pos, charCode in utf8.codes(arg) do
-        local nextChar = utf8.char(charCode)
-        replacementChars[#replacementChars+1] = {
-            text = nextChar,
-            xOffset = 0,
-            yOffset = 0,
-            color = {1, 1, 1},
-            paramsUsed = char.paramsUsed
-        }
-    end
+    return marker.charEffectHelpers.generateCollapsedCharsFromString(arg, char)
+end
 
-    return replacementChars
+marker.charEffects.var = function (char, arg, time, charIndex, charPrevious)
+    if marker.textVariables[arg] == nil then return end
+    local replacementText = tostring(marker.textVariables[arg])
+
+    return marker.charEffectHelpers.generateCollapsedCharsFromString(replacementText, char)
 end
 
 local corruptChars = {'#', '$', '%', '&', '@', '=', '?', '6', '<', '>'}
@@ -193,7 +193,6 @@ marker.charEffects.shake = function (char, arg, time, charIndex, charPrevious)
 
     local xOffset = (marker.functions.random() - 0.5) * amount + 0.5
     local yOffset = (marker.functions.random() - 0.5) * amount + 0.5
-    print(xOffset, yOffset)
     char.xOffset = char.xOffset + xOffset
     char.yOffset = char.yOffset + yOffset
 
@@ -568,6 +567,25 @@ marker.charEffectHelpers.splitArgs = function (str)
     end
 
     return parsedArgs
+end
+
+---@param str string
+---@param originalChar Marker.ParamCharCollapsed
+---@return Marker.ParamCharCollapsed[]
+marker.charEffectHelpers.generateCollapsedCharsFromString = function (str, originalChar)
+    local replacementChars = {}
+    for pos, charCode in utf8.codes(str) do
+        local nextChar = utf8.char(charCode)
+        replacementChars[#replacementChars+1] = {
+            text = nextChar,
+            xOffset = 0,
+            yOffset = 0,
+            color = {1, 1, 1},
+            paramsUsed = originalChar.paramsUsed
+        }
+    end
+
+    return replacementChars
 end
 
 ----------------------------------------------------------------------------------------------------
