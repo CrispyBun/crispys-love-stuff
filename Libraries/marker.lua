@@ -36,6 +36,19 @@ marker.callbacks = {}
 -- 'typewriter' (triggers on each new character written by the typewriter text effect)
 -- 'mouseover' (triggers each draw call where the mouse cursor is over a character)
 
+-- Defined tag params are:
+-- 'color'              - Sets the color of the text to a color defined in marker.colors
+-- 'tint'               - Same as color, overrides it
+-- 'wave'               - Characters sway up and down to the specified amount
+-- 'harmonica'          - Characters sway left and right to the specified amount
+-- 'shatter'            - Characters are displaced to random offsets by the specified amount
+-- 'shake'              - Characters shake at the specified amount,speed
+-- 'text'               - The text affected by the tag gets replaced by the specified string
+-- 'var'                - The text affected by the tag gets replaced by the specified variable refering to a value in marker.textVariables
+-- 'corrupt'            - The text affected by the tag changes to an ever-changing jumble of characters, changing at the specified speed
+-- 'typewriter'         - The text affected by the tag appears character by character, appearing at the specified speed
+-- 'typewriter-appear'  - The text affected by the tag fades in smoothly instead of character by character if also affected by the typewriter tag. Appears at specified speed (less than 1 for smooth fade).
+
 local paramUnsetKeywords = {"none", "unset", "/"}
 
 ----------------------------------------------------------------------------------------------------
