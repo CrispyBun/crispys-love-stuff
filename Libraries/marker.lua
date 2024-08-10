@@ -93,7 +93,7 @@ local paramUnsetKeywords = {"none", "unset", "/"}
 ---@field params Marker.ParamDictionary The parameters and their values for this char
 
 ---@alias Marker.TextAlign
----| '"default' # A default alignment. Identical to "left" (but you should use "left" instead of "default")
+---| '"default"' # A default alignment. Identical to "left" (but you should use "left" instead of "default")
 ---| '"left"' # Aligns text to the left horizontally
 ---| '"right"' # Aligns text to the right horizontally
 ---| '"center"' # Aligns text to the center horizontally
@@ -121,6 +121,7 @@ local paramUnsetKeywords = {"none", "unset", "/"}
 ---@field boxHeight number
 ---@field doRelativeXAlign boolean
 ---@field lineHeight number
+---@field textVariables table<string, any>  Same as marker.textVariables but for this text only
 ---
 ---@field rawString string The string used in creation of this markedText, with no processing
 ---@field strippedString string The raw string stripped of its tags, leaving only plaintext
@@ -806,7 +807,13 @@ function drawFunctions.default(markedText, alignment, justify)
 
     local cursorX, cursorY = marker.cursorX, marker.cursorY
 
+    -- Hack the markedText's textVariables into the global ones before the collapsed chars generate
+    local textVariablesPrevious = marker.textVariables
+    marker.textVariables = markedText.textVariables
+
     local collapsedParamString, effectsEncountered = collapseParamString(paramString, markedText.time)
+
+    marker.textVariables = textVariablesPrevious
 
     if maxWidth == math.huge then
         local width = 0
@@ -971,6 +978,8 @@ function markedTextMetatable:setText(str)
     self.cachedHeight = nil
 end
 
+local textVariablesMt = {__index = marker.textVariables}
+
 local defaultFont = marker.functions.newFont()
 --- Creates a new MarkedText instance
 ---@param str? string The tagged string to parse and set the text to (Default is empty string)
@@ -1013,7 +1022,8 @@ function marker.newMarkedText(str, font, x, y, maxWidth, textAlign, verticalAlig
         rawString = str,
         strippedString = strippedString,
         paramString = paramString,
-        lineHeight = lineHeight
+        lineHeight = lineHeight,
+        textVariables = setmetatable({}, textVariablesMt)
     }
 
     setmetatable(markedText, markedTextMetatable)
