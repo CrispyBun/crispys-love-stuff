@@ -905,7 +905,7 @@ drawFunctions.block = drawFunctions.justify
 local markedTextMetatable = {}
 markedTextMetatable.__index = markedTextMetatable
 
---- Draws the text, optionally overriding the set X and Y coordinates with the given parameters
+--- Draws the text
 function markedTextMetatable:draw()
     local drawFunction = drawFunctions[self.textAlign] or drawFunctions.invalid
     drawFunction(self)
