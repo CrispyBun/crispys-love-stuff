@@ -1,4 +1,53 @@
+
+--- The netstring header always contains:
+--- * `separatorSeparator` symbol
+--- * `separator` string
+--- * `separatorSeparator` symbol
+--- * newline (\n)
+--- 
+--- After the header, the body contains:
+--- * `messageID` (aka messageName)
+--- * `separator`
+--- * `data1`
+--- * `separator`
+--- * `data2`
+--- * `separator`
+--- * ...
+--- * `dataN` (The message type defines how many pieces of data should arrive)
+--- 
+--- `data` or `messageID` cannot contain the separator.
+--- The exception is the last piece of data, which may contain anything, including the separator.  
+--- 
+--- Example netstring messages:  
+--- 
+--- 'Position' expects 2 number values
+--- (here, it receives 100, 100)
+--- ```txt
+--- :
+--- 
+--- :
+--- Position
+--- 
+--- 100
+--- 
+--- 100
+--- ```  
+--- '3Strings' expects 3 string values
+--- (here, it receives "Hi", "Did you know", "THEENDISNEARTHEENDISNEAR")
+--- ```txt
+--- :END:
+--- 3StringsENDHiENDDid you knowENDTHEENDISNEARTHEENDISNEAR
+--- ```
 local netstring = {}
+
+--- The separator for data in messages.  
+--- Make sure this is a string that can never appear in any of the stringified data. You can change this right before generating a message to change its separator.
+---@type string
+netstring.dataSeparator = "\n\n"
+
+--- The string that defines the end of the separator in a message. This string must be a single char and cannot be anywhere in the separator.
+---@type string
+netstring.separatorSeparator = ":"
 
 --- A message type identifier and the data types it comes with, in order.
 ---@type table<string, string[]>
@@ -33,6 +82,55 @@ function netstring.newParser(stringify, parse)
         parse = parse or undefinedParse
     }
     return parser
+end
+
+--------------------------------------------------
+--- Message creation and the like
+
+--- Defines a new data type
+---@param name string The name of the data type
+---@param parser Netstring.Parser The parser of the data type
+function netstring.defineDataType(name, parser)
+    netstring.dataTypes[name] = parser
+end
+
+--- Defines a new message type
+---@param name string The name of the message type
+---@param types string[] The names of the data types to come with this message, as defined in `netstring.dataTypes`
+function netstring.defineMessageType(name, types)
+    netstring.messageTypes[name] = types
+end
+
+--- Creates a new message (string) from the defined message and data types
+---@param name string The name of the message as defined in `netstring.messageTypes`
+---@param ... unknown Each of the values the message expects, as defined in `netstring.messageTypes`
+function netstring.generateMessage(name, ...)
+    local parsers = netstring.messageTypes[name]
+    if not parsers then error("Unknown message: '" .. tostring(name) .. "'", 2) end
+
+    local msgHeader = {
+        netstring.separatorSeparator,
+        netstring.dataSeparator,
+        netstring.separatorSeparator,
+        "\n"
+    }
+    local msgBody = {
+        name
+    }
+
+    for argIndex = 1, #parsers do
+        local parserName = parsers[argIndex]
+        local parser = netstring.dataTypes[parserName]
+        if not parser then error("Message has undefined parser '" .. tostring(parserName) .. "'", 2) end
+
+        local value = select(argIndex, ...)
+        local success, str = parser.stringify(value)
+
+        if not success then error("Value type '" .. tostring(parserName) .. "' couldn't stringify the supplied value (" .. tostring(value) .. ")", 2) end
+        msgBody[#msgBody+1] = str
+    end
+
+    return table.concat(msgHeader) .. table.concat(msgBody, netstring.dataSeparator)
 end
 
 --------------------------------------------------
