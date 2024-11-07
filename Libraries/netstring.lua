@@ -104,6 +104,7 @@ end
 --- Creates a new message (string) from the defined message and data types
 ---@param name string The name of the message as defined in `netstring.messageTypes`
 ---@param ... unknown Each of the values the message expects, as defined in `netstring.messageTypes`
+---@return string
 function netstring.generateMessage(name, ...)
     local parsers = netstring.messageTypes[name]
     if not parsers then error("Unknown message: '" .. tostring(name) .. "'", 2) end
@@ -131,6 +132,57 @@ function netstring.generateMessage(name, ...)
     end
 
     return table.concat(msgHeader) .. table.concat(msgBody, netstring.dataSeparator)
+end
+
+--- Attempts to parse the message. Won't error - will either return `true, data` or `false, error`.
+---@param str string
+---@return boolean success
+---@return table|string dataOrError
+function netstring.parseMessage(str)
+    local separatorSeparator = string.sub(str, 1, 1)
+    local headerEnd = string.find(str, separatorSeparator, 2, true)
+    if not headerEnd then return false, "Malformed header" end
+
+    local separator = string.sub(str, 2, headerEnd-1)
+    if string.sub(str, headerEnd+1, headerEnd+1) ~= "\n" then return false, "Malformed header" end
+
+    local messageNameEnd = string.find(str, separator, headerEnd+2, true)
+    if not messageNameEnd then return false, "Missing body" end
+
+    local messageName = string.sub(str, headerEnd+2, messageNameEnd-1)
+    local parsers = netstring.messageTypes[messageName]
+    if not parsers then return false, "Unknown messageID" end
+
+    local separatorLength = #separator
+    local searchIndex = messageNameEnd + separatorLength
+
+    local parsedData = {}
+
+    for parserIndex = 1, #parsers do
+        local parserName = parsers[parserIndex]
+        local parser = netstring.dataTypes[parserName]
+        if not parser then return false, "Unknown data type: " .. tostring(parserName) end
+
+        local dataStart = searchIndex
+        local dataEnd
+        if parserIndex == #parsers then
+            dataEnd = #str
+        else
+            dataEnd = string.find(str, separator, searchIndex)
+            if not dataEnd then return false, "Missing data" end
+
+            searchIndex = dataEnd + separatorLength
+            dataEnd = dataEnd - 1
+        end
+
+        local dataStr = string.sub(str, dataStart, dataEnd)
+        local success, value = parser.parse(dataStr)
+        if not success then return false, "Couldn't parse data" end
+
+        parsedData[#parsedData+1] = value
+    end
+
+    return true, parsedData
 end
 
 --------------------------------------------------
