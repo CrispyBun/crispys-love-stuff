@@ -163,6 +163,14 @@ function netstring.generateMessage(name, data)
     return table.concat(msgHeader) .. table.concat(msgBody, netstring.dataSeparator)
 end
 
+--- The same as `netstring.generateMessage`, but the message name must be provided in the `data` table under the key `_MESSAGE`.
+---@param data table
+---@return string
+function netstring.generateMessageAuto(data)
+    if not data._MESSAGE then error("Message name not supplied in data", 2) end
+    return netstring.generateMessage(data._MESSAGE, data)
+end
+
 --- Attempts to parse the message. Won't error - will either return `true, data` or `false, error`.  
 --- This function doesn't need `netstring.dataSeparator` or `netstring.separatorSeparator` set - those are provided by the message.
 ---@param str string
@@ -186,7 +194,9 @@ function netstring.parseMessage(str)
     local separatorLength = #separator
     local searchIndex = messageNameEnd + separatorLength
 
-    local parsedData = {}
+    local parsedData = {
+        _MESSAGE = messageName
+    }
 
     for fieldIndex = 1, #fields do
         local field = fields[fieldIndex]
