@@ -116,8 +116,6 @@ function Server:getPort()
     return port
 end
 
--- processes everything in the queue that arrived since the last call to this
-
 -- Processes everything that arrived since the last call to `service`.  
 -- Either call this from an update loop or forever in a separate thread.
 function Server:service()
@@ -185,6 +183,11 @@ function Client:connect(ip, port)
 
     self.serverPeer = serverPeerOrError
     return true
+end
+
+---@return boolean
+function Client:isConnected()
+    return self.serverPeer:state() == "connected"
 end
 
 --- Sends (or attempts to send) a message to the server.  
