@@ -65,7 +65,6 @@ local ServerMT = {__index = Server}
 ---@class Sucket.Client
 ---@field host enet.host The enet host of the client
 ---@field serverPeer? enet.peer The connection to the server
----@field connectTimeoutSeconds number The time the client will wait for when trying to connect to a server when calling `client:connect()`
 local Client = {}
 local ClientMT = {__index = Client}
 
@@ -163,7 +162,6 @@ end
 function sucket.newClient()
     ---@type Sucket.Client
     local client = {
-        connectTimeoutSeconds = 4,
         host = enet.host_create()
     }
     return setmetatable(client, ClientMT)
