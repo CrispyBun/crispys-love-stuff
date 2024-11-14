@@ -64,6 +64,7 @@ enet.peer = {}
 ---@param data string
 ---@param channel? integer
 ---@param flag? "reliable"|"unsequenced"|"unreliable"
+---@return integer status
 function enet.peer:send(data, channel, flag) end
 
 --- Returns the state of the peer as a string. This can be any of the following:

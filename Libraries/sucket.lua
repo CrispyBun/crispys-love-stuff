@@ -189,6 +189,15 @@ function Client:connect(ip, port)
     return true
 end
 
+--- Sends (or attempts to send) a message to the server.  
+--- Returns `true` if the message was sent successfully, or `false` otherwise.
+---@param message string
+---@return boolean success
+function Client:send(message)
+    local status = self.server:send(message)
+    return status == 0
+end
+
 --------------------------------------------------
 
 return sucket
