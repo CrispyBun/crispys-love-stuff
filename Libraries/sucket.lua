@@ -64,7 +64,7 @@ local ServerMT = {__index = Server}
 --- An ENet client. Must be connected to a server using `client:connect()` to make it usable.
 ---@class Sucket.Client
 ---@field host enet.host The enet host of the client
----@field server? enet.peer The connection to the server
+---@field serverPeer? enet.peer The connection to the server
 ---@field connectTimeoutSeconds number The time the client will wait for when trying to connect to a server when calling `client:connect()`
 local Client = {}
 local ClientMT = {__index = Client}
@@ -185,7 +185,7 @@ function Client:connect(ip, port)
     ---@diagnostic disable-next-line: return-type-mismatch
     if not success then return false, serverPeerOrError end
 
-    self.server = serverPeerOrError
+    self.serverPeer = serverPeerOrError
     return true
 end
 
@@ -194,7 +194,7 @@ end
 ---@param message string
 ---@return boolean success
 function Client:send(message)
-    local status = self.server:send(message)
+    local status = self.serverPeer:send(message)
     return status == 0
 end
 
