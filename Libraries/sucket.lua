@@ -159,7 +159,6 @@ end
 --------------------------------------------------
 --- Client
 
-
 --- Creates a new client.
 function sucket.newClient()
     ---@type Sucket.Client
@@ -168,6 +167,26 @@ function sucket.newClient()
         host = enet.host_create()
     }
     return setmetatable(client, ClientMT)
+end
+
+--- Attempts to connect the client to a server. The connection won't take place until both the server and client run `service`.  
+--- 
+--- If the server doesn't exist or is unreachable, the client will simply never connect and the state will remain as "connecting".
+--- To cancel the connection attempt, simply call `client:disconnect()`.
+--- 
+--- If the connection attempt fails altogether, this function will return `false` and an error message.
+---@param ip string
+---@param port string|number
+---@return boolean success
+---@return string? err
+function Client:connect(ip, port)
+    local address = ip .. ":" .. port
+    local success, serverPeerOrError = pcall(self.host.connect, self.host, address)
+    ---@diagnostic disable-next-line: return-type-mismatch
+    if not success then return false, serverPeerOrError end
+
+    self.server = serverPeerOrError
+    return true
 end
 
 --------------------------------------------------
