@@ -26,7 +26,16 @@ sucket.decode = nil
 --------------------------------------------------
 --- Logging
 
----@alias sucket.Logger {log: fun(self: table, message: string, level?: string)}
+---@alias sucket.LogLevel
+---| '"none"' # No level assigned
+---| '"trace"' # Verbose step by step debug information
+---| '"debug"' # Debug information
+---| '"info"' # Informative
+---| '"warn"' # Unexpected event
+---| '"error"' # Problem occured
+---| '"fatal"' # Uh oh
+
+---@alias sucket.Logger {log: fun(self: table, message: string, level?: sucket.LogLevel)}
 
 --- If implemented, this will be used to add a logger to all new servers and clients
 ---@type fun(): sucket.Logger
@@ -80,6 +89,59 @@ function sucket.newServer(localOnly, maxClients, port)
     end
 
     return server
+end
+
+--- Returns the address the server is running on.
+---@return string
+function Server:getAddress()
+    return self.host:get_socket_address()
+end
+
+--- Returns the port the server is running on.
+---@return string
+function Server:getPort()
+    local address = self.host:get_socket_address()
+    local port = string.match(address, ".*:(.*)")
+    return port
+end
+
+-- processes everything in the queue that arrived since the last call to this
+
+-- Processes everything that arrived since the last call to `service`.  
+-- Either call this from an update loop or forever in a separate thread.
+function Server:service()
+    local host = self.host
+    local peers = self.peers
+    local logger = self.logger
+
+    local event = host:service()
+
+    while event do
+        local eventType = event.type
+        local eventData = event.data
+        local eventPeer = event.peer
+
+        if eventType == "connect" then
+            if logger then logger:log(string.format("Established connection: %s", tostring(eventPeer)), "info") end
+            peers[eventPeer] = true
+
+        elseif eventType == "disconnect" then
+            if logger then logger:log(string.format("Disconnected: %s", tostring(eventPeer)), "info") end
+            peers[eventPeer] = nil
+
+        elseif eventType == "receive" then
+            if logger then logger:log(string.format("Received message from %s", tostring(eventPeer)), "trace") end
+
+            -- todo: process the data here
+        else
+
+            -- Shouldn't be possible that this code is ever ran,
+            -- but might as well put a log for it, just in case.
+            if logger then logger:log(string.format("Received invalid network event type: '%s' from peer %s", tostring(eventType), tostring(eventPeer)), "error") end
+        end
+
+        event = host:service()
+    end
 end
 
 return sucket
