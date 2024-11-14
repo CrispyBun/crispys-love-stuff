@@ -3,6 +3,15 @@ local enet = require 'enet'
 local sucket = {}
 
 --------------------------------------------------
+--- Defaults
+
+---@type integer|string
+sucket.serverDefaultPort = "12832"
+
+---@type integer
+sucket.serverDefaultMaxClients = 64
+
+--------------------------------------------------
 --- Encoding
 --- (define these please)
 --- (or use netstring.lua)
@@ -37,13 +46,14 @@ sucket.decode = nil
 
 ---@alias sucket.Logger {log: fun(self: table, message: string, level?: sucket.LogLevel)}
 
---- If implemented, this will be used to add a logger to all new servers and clients
+--- If implemented, this will be used to add a logger to all new servers.
 ---@type fun(): sucket.Logger
 sucket.createLogger = nil
 
 --------------------------------------------------
 --- Definitions
 
+--- An ENet server.
 ---@class Sucket.Server
 ---@field host enet.host The enet host of the server
 ---@field peers table<enet.peer, boolean> The peers connected to the server
@@ -51,14 +61,16 @@ sucket.createLogger = nil
 local Server = {}
 local ServerMT = {__index = Server}
 
+--- An ENet client. Must be connected to a server using `client:connect()` to make it usable.
+---@class Sucket.Client
+---@field host enet.host The enet host of the client
+---@field server? enet.peer The connection to the server
+---@field connectTimeoutSeconds number The time the client will wait for when trying to connect to a server when calling `client:connect()`
+local Client = {}
+local ClientMT = {__index = Client}
+
 --------------------------------------------------
 --- Server
-
----@type integer|string
-sucket.serverDefaultPort = "12832"
-
----@type integer
-sucket.serverDefaultMaxClients = 64
 
 --- Creates and starts a new server. If for whatever reason the server isn't able to start, this function will return `nil` instead.
 ---@param localOnly? boolean If true, the server will start configured to only run locally for a single client.
@@ -88,7 +100,7 @@ function sucket.newServer(localOnly, maxClients, port)
         server.logger = logger
     end
 
-    return server
+    return setmetatable(server, ServerMT)
 end
 
 --- Returns the address the server is running on.
@@ -143,5 +155,21 @@ function Server:service()
         event = host:service()
     end
 end
+
+--------------------------------------------------
+--- Client
+
+
+--- Creates a new client.
+function sucket.newClient()
+    ---@type Sucket.Client
+    local client = {
+        connectTimeoutSeconds = 4,
+        host = enet.host_create()
+    }
+    return setmetatable(client, ClientMT)
+end
+
+--------------------------------------------------
 
 return sucket
