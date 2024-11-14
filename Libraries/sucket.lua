@@ -73,14 +73,14 @@ local ClientMT = {__index = Client}
 --- Server
 
 --- Creates and starts a new server. If for whatever reason the server isn't able to start, this function will return `nil` instead.
----@param localOnly? boolean If true, the server will start configured to only run locally for a single client.
----@param maxClients? integer The maximum allowed number of clients on the server. Default is the value in `sucket.serverDefaultMaxClients`.
----@param port? integer|string The port to launch the server on. Default is `"0"` if `localOnly` is true, or otherwise the value in `sucket.serverDefaultPort`.
+---@param ip? string The address to launch the server on. Can also be `localhost` for a local server or `*` for all interfaces. Defaults to `localhost`.
+---@param port? integer|string The port to launch the server on. `"0"` is a wildcard which will find the first available port. Defaults to `sucket.serverDefaultPort`.
+---@param maxClients? integer The maximum allowed number of clients on the server. Defaults to `sucket.serverDefaultMaxClients`.
 ---@return Sucket.Server? server
-function sucket.newServer(localOnly, maxClients, port)
-    local ip = localOnly and "localhost" or "*"
-    port = port or (localOnly and "0" or sucket.serverDefaultPort) -- port 0 is a wildcard to find any port
-    maxClients = maxClients or (localOnly and 1 or sucket.serverDefaultMaxClients)
+function sucket.newServer(ip, port, maxClients)
+    ip = ip or "localhost"
+    port = port or sucket.serverDefaultPort
+    maxClients = maxClients or sucket.serverDefaultMaxClients
 
     local address = ip .. ":" .. port
 
