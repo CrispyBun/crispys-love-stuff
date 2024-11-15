@@ -197,11 +197,12 @@ end
 --- To cancel the connection attempt, simply call `client:disconnect()`.
 --- 
 --- If the connection attempt fails altogether, this function will return `false` and an error message.
----@param ip string
----@param port string|number
+---@param ip string The IP of the server.
+---@param port? string|number The port of the server. Defaults to `sucket.serverDefaultPort`.
 ---@return boolean success
 ---@return string? err
 function Client:connect(ip, port)
+    port = port or sucket.serverDefaultPort
     local address = ip .. ":" .. port
     local success, serverPeerOrError = pcall(self.host.connect, self.host, address)
     ---@diagnostic disable-next-line: return-type-mismatch
@@ -209,6 +210,40 @@ function Client:connect(ip, port)
 
     self.serverPeer = serverPeerOrError
     return true
+end
+
+--- Like `Client:connect()`, but will block for the specified timeout waiting for the connection to happen
+--- and will cancel the connecton attempt if the timeout is reached.  
+--- Has a slight risk of voiding messages if they come in just as the connection is made.  
+---@param ip string The IP of the server.
+---@param port? string|number The port of the server. Defaults to `sucket.serverDefaultPort`.
+---@param timeout? number The maximum number of seconds to wait for the connection to be made. Defaults to `5`.
+---@return boolean success
+---@return string? err
+function Client:connectNow(ip, port, timeout)
+    local address = ip .. ":" .. port
+    local success, serverPeerOrError = pcall(self.host.connect, self.host, address)
+    ---@diagnostic disable-next-line: return-type-mismatch
+    if not success then return false, serverPeerOrError end
+
+    local serverPeer = serverPeerOrError
+
+    timeout = timeout or 5
+    local startTime = os.clock()
+    local endTime = startTime
+    while endTime - startTime < timeout do
+        local event = self.host:service()
+
+        if serverPeer:state() == "connected" then
+            self.serverPeer = serverPeer
+            return true
+        end
+
+        endTime = os.clock()
+    end
+
+    serverPeer:disconnect_now()
+    return false, "Connection timed out"
 end
 
 --- Requests a disconnection from the server. The request is sent on the next call to `service` or `flush`.
