@@ -67,6 +67,24 @@ enet.peer = {}
 ---@return integer status
 function enet.peer:send(data, channel, flag) end
 
+--- Requests a disconnection from the peer. The message is sent on the next `host:service` or `host:flush`.
+--- 
+--- `data` is optional integer value to be associated with the disconnect.
+---@param data? integer
+function enet.peer:disconnect(data) end
+
+--- Force immediate disconnection from peer. Foreign peer not guaranteed to receive disconnect notification.
+--- 
+--- `data` is optional integer value to be associated with the disconnect.
+---@param data? integer
+function enet.peer:disconnect_now(data) end
+
+--- Request a disconnection from peer, but only after all queued outgoing packets are sent.
+--- 
+--- `data` is optional integer value to be associated with the disconnect.
+---@param data? integer
+function enet.peer:disconnect_later(data) end
+
 --- Returns the state of the peer as a string. This can be any of the following:
 --- * `"disconnected"`
 --- * `"connecting"`

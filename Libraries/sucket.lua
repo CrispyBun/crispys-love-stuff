@@ -185,17 +185,38 @@ function Client:connect(ip, port)
     return true
 end
 
+--- Requests a disconnection from the server. The request is sent on the next call to `service` or `flush`.
+function Client:disconnect()
+    if not self.serverPeer then error("Client isn't connected to a server", 2) end
+    self.serverPeer:disconnect()
+end
+
+--- Forces a disconnection from the server.
+--- The server is not guaranteed to be notified of the disconnection, and no disconnect event will be generated.
+function Client:disconnectNow()
+    if not self.serverPeer then error("Client isn't connected to a server", 2) end
+    self.serverPeer:disconnect_now()
+end
+
+--- Requests a disconnection from the server, but only after all queued outgoing packets are sent.
+function Client:disconnectLater()
+    if not self.serverPeer then error("Client isn't connected to a server", 2) end
+    self.serverPeer:disconnect_later()
+end
+
 ---@return boolean
 function Client:isConnected()
+    if not self.serverPeer then return false end
     return self.serverPeer:state() == "connected"
 end
 
 --- Sends (or attempts to send) a message to the server.  
---- Returns `true` if the message was sent successfully, or `false` otherwise.
+--- Returns `true` if the message was sent successfully.
 ---@param message string
+---@param flag? "reliable"|"unsequenced"|"unreliable"
 ---@return boolean success
-function Client:send(message)
-    local status = self.serverPeer:send(message)
+function Client:send(message, flag)
+    local status = self.serverPeer:send(message, 0, flag)
     return status == 0
 end
 
