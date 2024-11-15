@@ -69,6 +69,27 @@ local Client = {}
 local ClientMT = {__index = Client}
 
 --------------------------------------------------
+--- Misc
+
+--- Splits an address into an IP and port.  
+--- Will return `nil` for the port if it's not there.
+function sucket.splitAddress(address)
+    local _, colonCount = string.gsub(address, ":", "")
+    if colonCount > 1 then
+        -- IPv6
+        -- ENet doesn't actually support IPv6 but might as well take it into account anyway
+        if not string.find(address, "[", 1, true) then return "[" .. address .. "]", nil end
+        local ip, port = string.match(address, "%[(.*)%]:(.*)")
+        if not port then return address, nil end -- No port
+        return ip, port
+    end
+
+    local ip, port = string.match(address, "(.*):(.*)")
+    if not port then return address, nil end -- No port
+    return ip, port
+end
+
+--------------------------------------------------
 --- Server
 
 --- Creates and starts a new server. If for whatever reason the server isn't able to start, this function will return `nil` instead.
