@@ -153,6 +153,11 @@ function Server:service()
     end
 end
 
+--- Sends any queued packets. Useful if `service` won't be called again.
+function Server:flush()
+    self.host:flush()
+end
+
 --------------------------------------------------
 --- Client
 
@@ -216,8 +221,14 @@ end
 ---@param flag? "reliable"|"unsequenced"|"unreliable"
 ---@return boolean success
 function Client:send(message, flag)
+    if not self.serverPeer then return false end
     local status = self.serverPeer:send(message, 0, flag)
     return status == 0
+end
+
+--- Sends any queued packets. Useful if `service` won't be called again.
+function Client:flush()
+    self.host:flush()
 end
 
 --------------------------------------------------

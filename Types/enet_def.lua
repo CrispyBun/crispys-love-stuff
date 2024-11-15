@@ -1,6 +1,6 @@
 ---@meta
 --- Definition file for enet (incomplete)
---- Transcribed from: https://leafo.net/lua-enet/
+--- Transcribed from https://leafo.net/lua-enet/ and http://enet.bespin.org/usergroup0.html
 
 ---@alias enet.peer_state
 ---| '"disconnected"'
@@ -46,6 +46,9 @@ function enet.host:connect(address, channel_count, data) end
 ---@param timeout? number
 ---@return enet.event event
 function enet.host:service(timeout) end
+
+--- Sends any queued packets. This is only required to send packets earlier than the next call to `host:service`, or if `host:service` will not be called again.
+function enet.host:flush() end
 
 --- Returns a string that describes the socket address of the given host. The string is formatted as “a.b.c.d:port”, where “a.b.c.d” is the ip address of the used socket.
 ---@return string address
