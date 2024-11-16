@@ -385,11 +385,12 @@ end
 --- To cancel the connection attempt, call `client:disconnect()` (or perhaps better, `client:disconnectNow()`).
 --- 
 --- If the connection attempt fails altogether, this function will return `false` and an error message.
----@param ip string The IP of the server.
+---@param ip? string The IP of the server. Defaults to `localhost`.
 ---@param port? string|number The port of the server. Defaults to `sucket.serverDefaultPort`.
 ---@return boolean success
 ---@return string? err
 function Client:connect(ip, port)
+    ip = ip or "localhost"
     port = port or sucket.serverDefaultPort
     local address = ip .. ":" .. port
     local success, serverPeerOrError = pcall(self.host.connect, self.host, address)
