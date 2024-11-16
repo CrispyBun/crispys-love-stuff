@@ -51,12 +51,25 @@ sucket.decode = nil
 sucket.createLogger = nil
 
 --------------------------------------------------
+--- Peer objects
+
+--- Inject your own fields into this class.  
+--- This class is used to hold anything you need to associate with a connected peer, such as a username or an ID of the player object they control.
+---@class Sucket.PeerInfo
+---@field enetPeer? enet.peer The actual enet peer, the library uses this field to communicate back to it. It will be populated automatically by the library.
+
+--- You may use this to implement a constructor for `PeerInfo` objects.  
+--- If not implemented, a simple empty table will be created for each new `PeerInfo`.
+---@type fun(): Sucket.PeerInfo
+sucket.createPeerInfo = nil
+
+--------------------------------------------------
 --- Definitions
 
 --- An ENet server.
 ---@class Sucket.Server
 ---@field host enet.host The enet host of the server
----@field peers table<enet.peer, boolean> The peers connected to the server
+---@field peers table<enet.peer, Sucket.PeerInfo> The peers connected to the server
 ---@field logger? sucket.Logger An optional logger object with any implementation
 local Server = {}
 local ServerMT = {__index = Server}
@@ -154,7 +167,10 @@ function Server:service()
 
         if eventType == "connect" then
             if logger then logger:log(string.format("Established connection: %s", tostring(eventPeer)), "info") end
-            peers[eventPeer] = true
+
+            local peerInfo = sucket.createPeerInfo and sucket.createPeerInfo() or {}
+            peerInfo.enetPeer = eventPeer
+            peers[eventPeer] = peerInfo
 
         elseif eventType == "disconnect" then
             if logger then logger:log(string.format("Disconnected: %s", tostring(eventPeer)), "info") end
@@ -168,6 +184,7 @@ function Server:service()
 
             -- Shouldn't be possible that this code is ever ran,
             -- but might as well put a log for it, just in case.
+            -- A "NONE" event type *does* exist in ENet, but I don't think it should be possible that it sends.
             if logger then logger:log(string.format("Received invalid network event type: '%s' from peer %s", tostring(eventType), tostring(eventPeer)), "error") end
         end
 
