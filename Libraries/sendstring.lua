@@ -299,6 +299,16 @@ function (str)
     return true, num
 end)
 
+sendstring.dataTypes.boolean = sendstring.newParser(
+function (value)
+    if value then return true, "true" end
+    return true, "false"
+end,
+
+function (str)
+    return true, str == "true"
+end)
+
 sendstring.dataTypes["number[]"] = sendstring.newParser(
 function (value)
     if type(value) ~= "table" then return false, "" end
