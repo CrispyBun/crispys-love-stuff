@@ -18,13 +18,13 @@ sucket.serverDefaultMaxClients = 64
 
 --- An encoding function for sending messages over the network.  
 --- 
---- Takes in any value which should be sent and returns a string of the encoded value, or potentially errors.  
+--- Takes in any value which should be sent and returns a string of the encoded value.  
 --- 
 --- If this isn't supplied, a simple `tostring` will be used.
 ---@type fun(value: any): string
 sucket.encode = nil
 
---- A decoding function for decoding messages which arrived over the network.  
+--- A decoding function for decoding messages which arrived from over the network.  
 --- 
 --- Takes in the encoded string value, and returns two values: a boolean whether decoding was successful, and the decoded value itself (or potentially an error message string). This function shouldn't error.
 --- 
@@ -347,10 +347,13 @@ end
 
 --- Sends (or attempts to send) a message to the server.  
 --- Returns `true` if the message was sent successfully.
----@param message string
+---@param message any The data to send (will be encoded using `sucket.encode`).
 ---@param flag? "reliable"|"unsequenced"|"unreliable"
 ---@return boolean success
 function Client:send(message, flag)
+    local encoder = sucket.encode or tostring
+    message = encoder(message)
+
     if not self.serverPeer then return false end
     local status = self.serverPeer:send(message, 0, flag)
     return status == 0
