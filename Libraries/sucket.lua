@@ -170,7 +170,9 @@ function Server:service()
             if logger then logger:log(string.format("Received invalid network event type: '%s' from peer %s", tostring(eventType), tostring(eventPeer)), "error") end
         end
 
-        event = host:service()
+        local success
+        success, event = pcall(host.service, host)
+        if not success then return end -- It seems service may just not work sometimes in weird edge cases (such as an invalid packet arriving, i believe)
     end
 end
 
