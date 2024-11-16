@@ -121,10 +121,10 @@ local ClientMT = {__index = Client}
 --- This table is present in both the `Server` and `Client` classes,
 --- and are the easiest way to manage things like processing received messages.
 ---@class Sucket.NetworkCallbacks
----@field connect? fun(self: Sucket.Server|Sucket.Client, peerInfo: Sucket.PeerInfo) Called when a peer connects.
----@field disconnect? fun(self: Sucket.Server|Sucket.Client, peerInfo: Sucket.PeerInfo) Called when a peer disconnects.
----@field receive? fun(self: Sucket.Server|Sucket.Client, peerInfo: Sucket.PeerInfo, message: any) Called when a message is received.
----@field receiveInvalidData? fun(self: Sucket.Server|Sucket.Client, peerInfo: Sucket.PeerInfo, receivedRaw: string, err: string) Called when invalid data is received (decoder couldn't decode).
+---@field connect? fun(owner: Sucket.Server|Sucket.Client, peerInfo: Sucket.PeerInfo) Called when a peer connects.
+---@field disconnect? fun(owner: Sucket.Server|Sucket.Client, peerInfo: Sucket.PeerInfo) Called when a peer disconnects.
+---@field receive? fun(owner: Sucket.Server|Sucket.Client, peerInfo: Sucket.PeerInfo, message: any) Called when a message is received.
+---@field receiveInvalidData? fun(owner: Sucket.Server|Sucket.Client, peerInfo: Sucket.PeerInfo, receivedRaw: string, err: string) Called when invalid data is received (decoder couldn't decode).
 
 --------------------------------------------------
 --- Misc
