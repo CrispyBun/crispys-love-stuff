@@ -192,16 +192,18 @@ function sendstring.generateMessage(name, data)
     return table.concat(msgHeader) .. table.concat(msgBody, sendstring.dataSeparator)
 end
 
---- The same as `sendstring.generateMessage`, but the message name must be provided in the `data` table under the key `_MESSAGE`.
+--- The same as `sendstring.generateMessage`, but the message name must be provided in the `data` table under the key `_MESSAGETYPE`.
 ---@param data table
 ---@return string
 function sendstring.generateMessageAuto(data)
-    if not data._MESSAGE then error("Message name not supplied in data", 2) end
-    return sendstring.generateMessage(data._MESSAGE, data)
+    if not data._MESSAGETYPE then error("Message name not supplied in data", 2) end
+    return sendstring.generateMessage(data._MESSAGETYPE, data)
 end
 
 --- Attempts to parse the message. Won't error - will either return `true, data` or `false, error`.  
---- This function doesn't need `sendstring.dataSeparator` or `sendstring.separatorSeparator` set - those are provided by the message.
+--- This function doesn't need `sendstring.dataSeparator` or `sendstring.separatorSeparator` set - those are provided by the message.  
+--- 
+--- The resulting table will also have the `_MESSAGETYPE` field containing the name of the message that constructed it (as defined in `sendstring.messageTypes`).
 ---@param str string
 ---@return boolean success
 ---@return table|string dataOrError
@@ -224,7 +226,7 @@ function sendstring.parseMessage(str)
     local searchIndex = messageNameEnd + separatorLength
 
     local parsedData = {
-        _MESSAGE = messageName
+        _MESSAGETYPE = messageName
     }
 
     for fieldIndex = 1, #fields do
