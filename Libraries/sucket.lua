@@ -446,7 +446,7 @@ end
 
 --- Requests a disconnection from the server. The request is sent on the next call to `service` or `flush`.
 function Client:disconnect()
-    if not self.serverPeer then error("Client isn't connected to a server", 2) end
+    if not self:isConnected() then return end
     self.serverPeer:disconnect()
     self.serverPeer = nil
 end
@@ -454,7 +454,7 @@ end
 --- Forces a disconnection from the server.
 --- The server is not guaranteed to be notified of the disconnection, and no disconnect event will be generated.
 function Client:disconnectNow()
-    if not self.serverPeer then error("Client isn't connected to a server", 2) end
+    if not self:isConnected() then return end
     self.serverPeer:disconnect_now()
 
     if self.callbacks.disconnect then self.callbacks.disconnect(self, self.serverPeerInfo) end
@@ -463,7 +463,7 @@ end
 
 --- Requests a disconnection from the server, but only after all queued outgoing packets are sent.
 function Client:disconnectLater()
-    if not self.serverPeer then error("Client isn't connected to a server", 2) end
+    if not self:isConnected() then return end
     self.serverPeer:disconnect_later()
     self.serverPeer = nil
 end
