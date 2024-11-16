@@ -68,6 +68,7 @@ sucket.createPeerInfo = nil
 
 --- An ENet server.
 ---@class Sucket.Server
+---@field callbacks Sucket.NetworkCallbacks A table of callbacks for network events
 ---@field host enet.host The enet host of the server
 ---@field peers table<enet.peer, Sucket.PeerInfo> The peers connected to the server
 ---@field logger? sucket.Logger An optional logger object with any implementation
@@ -76,10 +77,20 @@ local ServerMT = {__index = Server}
 
 --- An ENet client. Must be connected to a server using `client:connect()` to make it usable.
 ---@class Sucket.Client
+---@field callbacks Sucket.NetworkCallbacks A table of callbacks for network events
 ---@field host enet.host The enet host of the client
 ---@field serverPeer? enet.peer The connection to the server
 local Client = {}
 local ClientMT = {__index = Client}
+
+--- A table of callbacks for various network events.  
+--- This table is present in both the `Server` and `Client` classes,
+--- and are the easiest way to manage things like processing received messages.
+---@class Sucket.NetworkCallbacks
+---@field connect? fun(self: Sucket.Server|Sucket.Client, peerInfo: Sucket.PeerInfo) Called when a peer connects.
+---@field disconnect? fun(self: Sucket.Server|Sucket.Client, peerInfo: Sucket.PeerInfo) Called when a peer disconnects.
+---@field receive? fun(self: Sucket.Server|Sucket.Client, peerInfo: Sucket.PeerInfo, message: any) Called when a message is received.
+---@field receiveInvalidData? fun(self: Sucket.Server|Sucket.Client, peerInfo: Sucket.PeerInfo, receivedRaw: string, err: string) Called when invalid data is received (decoder couldn't decode).
 
 --------------------------------------------------
 --- Misc
@@ -125,6 +136,7 @@ function sucket.newServer(ip, port, maxClients)
     local server = {
         host = host,
         peers = {},
+        callbacks = {}
     }
 
     if sucket.createLogger then
@@ -172,14 +184,40 @@ function Server:service()
             peerInfo.enetPeer = eventPeer
             peers[eventPeer] = peerInfo
 
+            if self.callbacks.connect then
+                self.callbacks.connect(self, peerInfo)
+            end
+
         elseif eventType == "disconnect" then
             if logger then logger:log(string.format("Disconnected: %s", tostring(eventPeer)), "info") end
+
+            if self.callbacks.disconnect then
+                self.callbacks.disconnect(self, peers[eventPeer])
+            end
+
             peers[eventPeer] = nil
 
         elseif eventType == "receive" then
-            if logger then logger:log(string.format("Received message from %s", tostring(eventPeer)), "trace") end
+            local message = tostring(eventData)
+            local decodedSuccessfully = true
 
-            -- todo: process the data here
+            local decoder = sucket.decode
+            if decoder then
+                decodedSuccessfully, message = decoder(message)
+            end
+
+            if decodedSuccessfully then
+                if logger then logger:log(string.format("Received message from %s", tostring(eventPeer)), "trace") end
+                if self.callbacks.receive then
+                    self.callbacks.receive(self, peers[eventPeer], message)
+                end
+            else
+                if logger then logger:log(string.format("Received invalid data from %s (%s)", tostring(eventPeer), message), "warn") end
+                if self.callbacks.receiveInvalidData then
+                    self.callbacks.receiveInvalidData(self, peers[eventPeer], tostring(eventData), message)
+                end
+            end
+
         else
 
             -- Shouldn't be possible that this code is ever ran,
@@ -228,6 +266,8 @@ function Server:disconnectPeerNow(peerInfo)
     local peer = peerInfo.enetPeer
     if not peer then error("PeerInfo doesn't contain an ENet peer", 2) end
     peer:disconnect_now()
+
+    if self.callbacks.disconnect then self.callbacks.disconnect(self, peerInfo) end
     self.peers[peer] = nil
 end
 Server.kick = Server.disconnectPeerNow
@@ -246,6 +286,8 @@ function Server:forceDisconnectPeer(peerInfo)
     local peer = peerInfo.enetPeer
     if not peer then error("PeerInfo doesn't contain an ENet peer", 2) end
     peer:reset()
+
+    if self.callbacks.disconnect then self.callbacks.disconnect(self, peerInfo) end
     self.peers[peer] = nil
 end
 Server.forceKick = Server.forceDisconnectPeer
@@ -264,7 +306,8 @@ end
 function sucket.newClient()
     ---@type Sucket.Client
     local client = {
-        host = enet.host_create()
+        host = enet.host_create(),
+        callbacks = {}
     }
     return setmetatable(client, ClientMT)
 end
