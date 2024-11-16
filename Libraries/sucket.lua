@@ -196,6 +196,32 @@ function Server:getPort()
     return port
 end
 
+--- Broadcasts a message to all connected peers.
+---@param message any The data to send (will be encoded using `sucket.encode`).
+---@param flag? "reliable"|"unsequenced"|"unreliable"
+function Server:broadcast(message, flag)
+    local encoder = sucket.encode or tostring
+    message = encoder(message)
+    self.host:broadcast(message, 0, flag)
+end
+
+--- Sends (or attempts to send) a message to the specified peer.  
+--- Returns `true` if the message was sent successfully.
+---@param peerInfo Sucket.PeerInfo
+---@param message any The data to send (will be encoded using `sucket.encode`).
+---@param flag? "reliable"|"unsequenced"|"unreliable"
+---@return boolean success
+function Server:send(peerInfo, message, flag)
+    local encoder = sucket.encode or tostring
+    message = encoder(message)
+
+    local peer = peerInfo.enetPeer
+    if not peer then error("PeerInfo doesn't contain an ENet peer", 2) end
+
+    local status = peer:send(message, 0, flag)
+    return status == 0
+end
+
 -- Processes everything that arrived since the last call to `service`.  
 -- Either call this from an update loop or forever in a separate thread.
 function Server:service()
