@@ -198,6 +198,42 @@ function Server:flush()
     self.host:flush()
 end
 
+--- Tells the peer to disconnect. The request is sent on the next call to `service` or `flush`.
+---@param peerInfo Sucket.PeerInfo
+function Server:disconnectPeer(peerInfo)
+    local peer = peerInfo.enetPeer
+    if not peer then error("PeerInfo doesn't contain an ENet peer", 2) end
+    peer:disconnect()
+end
+
+--- Forces the peer to disconnect. The peer is not guaranteed to be notified of the disconnection.
+---@param peerInfo Sucket.PeerInfo
+function Server:disconnectPeerNow(peerInfo)
+    local peer = peerInfo.enetPeer
+    if not peer then error("PeerInfo doesn't contain an ENet peer", 2) end
+    peer:disconnect_now()
+    self.peers[peer] = nil
+end
+Server.kick = Server.disconnectPeerNow
+
+--- Tells the peer to disconnect, but only after all queued outgoing packets are sent.
+---@param peerInfo Sucket.PeerInfo
+function Server:disconnectPeerLater(peerInfo)
+    local peer = peerInfo.enetPeer
+    if not peer then error("PeerInfo doesn't contain an ENet peer", 2) end
+    peer:disconnect_later()
+end
+
+--- Forcefully disconnects the peer. The peer is not notified of the disconnection.
+---@param peerInfo Sucket.PeerInfo
+function Server:forceDisconnectPeer(peerInfo)
+    local peer = peerInfo.enetPeer
+    if not peer then error("PeerInfo doesn't contain an ENet peer", 2) end
+    peer:reset()
+    self.peers[peer] = nil
+end
+Server.forceKick = Server.forceDisconnectPeer
+
 --------------------------------------------------
 --- Client
 

@@ -88,6 +88,9 @@ function enet.peer:disconnect_now(data) end
 ---@param data? integer
 function enet.peer:disconnect_later(data) end
 
+--- Forcefully disconnects peer. The peer is not notified of the disconnection.
+function enet.peer:reset() end
+
 --- Returns the state of the peer as a string. This can be any of the following:
 --- * `"disconnected"`
 --- * `"connecting"`
