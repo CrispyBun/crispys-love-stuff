@@ -16,6 +16,9 @@ sucket.serverDefaultMaxClients = 64
 --- (define these please)
 --- (or use netstring.lua)
 
+--- To actually retrieve and use the decoded data from incoming messages,
+--- add a `callbacks.receive` function to the receiving server or client.
+
 --- An encoding function for sending messages over the network.  
 --- 
 --- Takes in any value which should be sent and returns a string of the encoded value.  
@@ -80,6 +83,7 @@ local ServerMT = {__index = Server}
 ---@field callbacks Sucket.NetworkCallbacks A table of callbacks for network events
 ---@field host enet.host The enet host of the client
 ---@field serverPeer? enet.peer The connection to the server
+---@field serverPeerInfo? Sucket.PeerInfo
 local Client = {}
 local ClientMT = {__index = Client}
 
@@ -329,7 +333,11 @@ function Client:connect(ip, port)
     ---@diagnostic disable-next-line: return-type-mismatch
     if not success then return false, serverPeerOrError end
 
+    local peerInfo = sucket.createPeerInfo and sucket.createPeerInfo() or {}
+    peerInfo.enetPeer = serverPeerOrError
+
     self.serverPeer = serverPeerOrError
+    self.serverPeerInfo = peerInfo
     return true
 end
 
@@ -356,7 +364,13 @@ function Client:connectNow(ip, port, timeout)
         local event = self.host:service()
 
         if serverPeer:state() == "connected" then
+            local peerInfo = sucket.createPeerInfo and sucket.createPeerInfo() or {}
+            peerInfo.enetPeer = serverPeer
+
             self.serverPeer = serverPeer
+            self.serverPeerInfo = peerInfo
+
+            if self.callbacks.connect then self.callbacks.connect(self, peerInfo) end
             return true
         end
 
@@ -379,6 +393,8 @@ end
 function Client:disconnectNow()
     if not self.serverPeer then error("Client isn't connected to a server", 2) end
     self.serverPeer:disconnect_now()
+
+    if self.callbacks.disconnect then self.callbacks.disconnect(self, self.serverPeerInfo) end
     self.serverPeer = nil
 end
 
@@ -422,14 +438,42 @@ function Client:service()
         local eventData = event.data
         local eventPeer = event.peer
 
-        if eventType == "connect" then
+        local peerInfo = self.serverPeerInfo
+        if peerInfo and peerInfo.enetPeer ~= eventPeer then
+            -- Event isn't from the server we're connected to,
+            -- could potentially happen as a super rare edge-case message
+            -- from a server we were just connected to but aren't anymore.
+            return
+        end
 
+        if eventType == "connect" then
+            if not peerInfo then error("A connection happened without serverPeerInfo being assigned, which should be impossible", 2) end
+            if self.callbacks.connect then self.callbacks.connect(self, peerInfo) end
 
         elseif eventType == "disconnect" then
-
+            if not peerInfo then error("A disconnection happened without serverPeerInfo being assigned, which should be impossible", 2) end
+            if self.callbacks.disconnect then self.callbacks.disconnect(self, peerInfo) end
 
         elseif eventType == "receive" then
+            if not peerInfo then error("A message was received without serverPeerInfo being assigned, which should be impossible", 2) end
 
+            local message = tostring(eventData)
+            local decodedSuccessfully = true
+
+            local decoder = sucket.decode
+            if decoder then
+                decodedSuccessfully, message = decoder(message)
+            end
+
+            if decodedSuccessfully then
+                if self.callbacks.receive then
+                    self.callbacks.receive(self, peerInfo, message)
+                end
+            else
+                if self.callbacks.receiveInvalidData then
+                    self.callbacks.receiveInvalidData(self, peerInfo, tostring(eventData), message)
+                end
+            end
 
         end
 
