@@ -216,7 +216,16 @@ function sendstring.parseMessage(str)
     if string.sub(str, headerEnd+1, headerEnd+1) ~= "\n" then return false, "Malformed header" end
 
     local messageNameEnd = string.find(str, separator, headerEnd+2, true)
-    if not messageNameEnd then return false, "Missing body" end
+    if not messageNameEnd then
+        local rest = string.sub(str, headerEnd+2)
+
+        local messageType = sendstring.messageTypes[rest]
+        if messageType and #messageType == 0 then
+            return true, { _MESSAGETYPE = rest } -- Message type with no data
+        end
+
+        return false, "Missing body"
+    end
 
     local messageName = string.sub(str, headerEnd+2, messageNameEnd-1)
     local fields = sendstring.messageTypes[messageName]
