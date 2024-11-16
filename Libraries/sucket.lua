@@ -250,6 +250,13 @@ function Server:forceDisconnectPeer(peerInfo)
 end
 Server.forceKick = Server.forceDisconnectPeer
 
+--- Sets the bandwidth limits of the server in bytes/sec. Set to `0` for unlimited.
+---@param incoming integer
+---@param outgoing integer
+function Server:setBandwidthLimit(incoming, outgoing)
+    self.host:bandwidth_limit(incoming, outgoing)
+end
+
 --------------------------------------------------
 --- Client
 

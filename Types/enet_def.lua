@@ -50,6 +50,11 @@ function enet.host:service(timeout) end
 --- Sends any queued packets. This is only required to send packets earlier than the next call to `host:service`, or if `host:service` will not be called again.
 function enet.host:flush() end
 
+--- Sets the bandwidth limits of the host in bytes/sec. Set to `0` for unlimited.
+---@param incoming integer
+---@param outgoing integer
+function enet.host:bandwidth_limit(incoming, outgoing) end
+
 --- Returns the number of peers that are allocated for the given host. This represents the maximum number of possible connections.
 ---@return integer count
 function enet.host:peer_count() end
