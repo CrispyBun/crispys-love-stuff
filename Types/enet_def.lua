@@ -50,6 +50,16 @@ function enet.host:service(timeout) end
 --- Sends any queued packets. This is only required to send packets earlier than the next call to `host:service`, or if `host:service` will not be called again.
 function enet.host:flush() end
 
+--- Returns the number of peers that are allocated for the given host. This represents the maximum number of possible connections.
+---@return integer count
+function enet.host:peer_count() end
+
+--- Returns the connected peer at the specified index (starting at 1).
+--- ENet stores all peers in an array of the corresponding host and re-uses unused peers for new connections. You can query the state of a peer using `peer:state`.
+---@param index integer
+---@return enet.peer peer
+function enet.host:get_peer(index) end
+
 --- Returns a string that describes the socket address of the given host. The string is formatted as “a.b.c.d:port”, where “a.b.c.d” is the ip address of the used socket.
 ---@return string address
 function enet.host:get_socket_address() end

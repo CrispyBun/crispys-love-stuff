@@ -56,7 +56,7 @@ sucket.createLogger = nil
 --- Inject your own fields into this class.  
 --- This class is used to hold anything you need to associate with a connected peer, such as a username or an ID of the player object they control.
 ---@class Sucket.PeerInfo
----@field enetPeer? enet.peer The actual enet peer, the library uses this field to communicate back to it. It will be populated automatically by the library.
+---@field enetPeer? enet.peer The actual enet peer, the library uses this field to communicate back to it. It will be populated automatically by the library. You shouldn't touch it yourself.
 
 --- You may use this to implement a constructor for `PeerInfo` objects.  
 --- If not implemented, a simple empty table will be created for each new `PeerInfo`.
@@ -196,6 +196,22 @@ end
 --- Sends any queued packets. Useful if `service` won't be called again.
 function Server:flush()
     self.host:flush()
+end
+
+--- Returns a list of all connected peers in no particular order.
+---@return Sucket.PeerInfo[]
+function Server:getConnectedPeers()
+    local peerInfos = {}
+
+    local peerCount = self.host:peer_count()
+    for peerIndex = 1, peerCount do
+        local peer = self.host:get_peer(peerIndex)
+        if peer:state() == "connected" then
+            peerInfos[#peerInfos+1] = self.peers[peer]
+        end
+    end
+
+    return peerInfos
 end
 
 --- Tells the peer to disconnect. The request is sent on the next call to `service` or `flush`.
