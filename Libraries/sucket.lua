@@ -144,7 +144,8 @@ function Server:service()
     local peers = self.peers
     local logger = self.logger
 
-    local event = host:service()
+    local success, event = pcall(host.service, host)
+    if not success then return end -- It seems service may just not work sometimes in weird edge cases (such as an invalid packet arriving, i believe)
 
     while event do
         local eventType = event.type
@@ -170,9 +171,8 @@ function Server:service()
             if logger then logger:log(string.format("Received invalid network event type: '%s' from peer %s", tostring(eventType), tostring(eventPeer)), "error") end
         end
 
-        local success
         success, event = pcall(host.service, host)
-        if not success then return end -- It seems service may just not work sometimes in weird edge cases (such as an invalid packet arriving, i believe)
+        if not success then return end
     end
 end
 
@@ -282,6 +282,35 @@ function Client:send(message, flag)
     if not self.serverPeer then return false end
     local status = self.serverPeer:send(message, 0, flag)
     return status == 0
+end
+
+--- Processes everything that arrived since the last call to `service`.  
+--- Either call this from an update loop or forever in a separate thread.
+function Client:service()
+    local host = self.host
+
+    local success, event = pcall(host.service, host)
+    if not success then return end -- If the client isn't connected anywhere, service just straight up errors
+
+    while event do
+        local eventType = event.type
+        local eventData = event.data
+        local eventPeer = event.peer
+
+        if eventType == "connect" then
+
+
+        elseif eventType == "disconnect" then
+
+
+        elseif eventType == "receive" then
+
+
+        end
+
+        success, event = pcall(host.service, host)
+        if not success then return end
+    end
 end
 
 --- Sends any queued packets. Useful if `service` won't be called again.
