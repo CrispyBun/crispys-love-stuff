@@ -196,7 +196,7 @@ end
 ---@param data table
 ---@return string
 function sendstring.generateMessageAuto(data)
-    if not data._MESSAGETYPE then error("Message name not supplied in data", 2) end
+    if not data._MESSAGETYPE then error("_MESSAGETYPE not supplied in data", 2) end
     return sendstring.generateMessage(data._MESSAGETYPE, data)
 end
 
