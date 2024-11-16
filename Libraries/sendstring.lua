@@ -174,6 +174,8 @@ function sendstring.generateMessage(name, data)
         name
     }
 
+    if string.find(name, sendstring.dataSeparator) then error("Message name contains the data separator", 2) end
+
     for fieldIndex = 1, #fields do
         local field = fields[fieldIndex]
 
@@ -184,6 +186,8 @@ function sendstring.generateMessage(name, data)
         local key = field.key
         local value = data[key]
         local success, str = parser.stringify(value)
+
+        if fieldIndex < #fields and string.find(str, sendstring.dataSeparator) then error("Value '" .. tostring(key) .. "' contains the data separator after being parsed", 2) end
 
         if not success then error("Value type '" .. tostring(parserName) .. "' couldn't stringify the supplied value (" .. tostring(value) .. ")", 2) end
         msgBody[#msgBody+1] = str
