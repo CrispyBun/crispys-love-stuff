@@ -196,7 +196,7 @@ end
 --- Attempts to connect the client to a server. The connection won't take place until both the server and client run `service`.  
 --- 
 --- If the server doesn't exist or is unreachable, the client will simply never connect and the state will remain as "connecting".
---- To cancel the connection attempt, simply call `client:disconnect()`.
+--- To cancel the connection attempt, call `client:disconnect()` (or perhaps better, `client:disconnectNow()`).
 --- 
 --- If the connection attempt fails altogether, this function will return `false` and an error message.
 ---@param ip string The IP of the server.
@@ -252,6 +252,7 @@ end
 function Client:disconnect()
     if not self.serverPeer then error("Client isn't connected to a server", 2) end
     self.serverPeer:disconnect()
+    self.serverPeer = nil
 end
 
 --- Forces a disconnection from the server.
@@ -259,12 +260,14 @@ end
 function Client:disconnectNow()
     if not self.serverPeer then error("Client isn't connected to a server", 2) end
     self.serverPeer:disconnect_now()
+    self.serverPeer = nil
 end
 
 --- Requests a disconnection from the server, but only after all queued outgoing packets are sent.
 function Client:disconnectLater()
     if not self.serverPeer then error("Client isn't connected to a server", 2) end
     self.serverPeer:disconnect_later()
+    self.serverPeer = nil
 end
 
 ---@return boolean
