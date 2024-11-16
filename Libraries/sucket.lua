@@ -310,7 +310,7 @@ end
 function sucket.newClient()
     ---@type Sucket.Client
     local client = {
-        host = enet.host_create(),
+        host = enet.host_create(nil, 1),
         callbacks = {}
     }
     return setmetatable(client, ClientMT)
