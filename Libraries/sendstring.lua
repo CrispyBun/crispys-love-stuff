@@ -1,5 +1,5 @@
 
---- The netstring header always contains:
+--- The sendstring header always contains:
 --- * `separatorSeparator` symbol
 --- * `separator` string
 --- * `separatorSeparator` symbol
@@ -18,7 +18,7 @@
 --- `data` or `messageID` cannot contain the separator.
 --- The exception is the last piece of data, which may contain anything, including the separator.  
 --- 
---- Example netstring messages:  
+--- Example sendstring messages:  
 --- 
 --- 'Position' expects 2 number values
 --- (here, it receives 100, 100)
@@ -38,35 +38,35 @@
 --- :END:
 --- 3StringsENDHiENDDid you knowENDTHEENDISNEARTHEENDISNEAR
 --- ```
-local netstring = {}
+local sendstring = {}
 
 --- The separator for data in messages.  
 --- Make sure this is a string that can never appear in any of the stringified data. You can change this right before generating a message to change its separator.
 ---@type string
-netstring.dataSeparator = "\n\n"
+sendstring.dataSeparator = "\n\n"
 
 --- The character that defines the end of the separator in a message. This string must be a single char and cannot be anywhere in the separator string.
 ---@type string
-netstring.separatorSeparator = ":"
+sendstring.separatorSeparator = ":"
 
 --- A message identifier and the fields it sends, in order. The last provided field is special, as its value may contain the separator of the message its sent in.
----@type table<string, Netstring.MessageField[]>
-netstring.messageTypes = {}
+---@type table<string, Sendstring.MessageField[]>
+sendstring.messageTypes = {}
 
 --- The defined data types and their parsers. Some are provided out of the box by the library, defined later.
----@type table<string, Netstring.Parser>
-netstring.dataTypes = {}
+---@type table<string, Sendstring.Parser>
+sendstring.dataTypes = {}
 
 --------------------------------------------------
 --- Definitions
 
---- Defines a key in the table of a parsed message, and its data type (as a string which is present in netstring.dataTypes).
----@class Netstring.MessageField
+--- Defines a key in the table of a parsed message, and its data type (as a string which is present in sendstring.dataTypes).
+---@class Sendstring.MessageField
 ---@field key string|number The key this data will be present at in the non-stringified table
 ---@field dataType string The dataType to use for this field
 
 --- Defines how a type should be converted to and from a string
----@class Netstring.Parser
+---@class Sendstring.Parser
 ---@field stringify fun(value: any): boolean, string Function for converting the value to a string. Must return a success boolean and the converted string (or some default string if unsuccessful).
 ---@field parse fun(str: string): boolean, any Function for parsing a string back into the value. Must return a success boolean and the converted value (or some default value if unsuccesful).
 
@@ -79,9 +79,9 @@ local function undefinedParse() error("The 'parse' function for this parser has 
 --- Creates a new parser. You can pass in the `stringify` and `parse` functions immediately, or set them after creation.
 ---@param stringify? fun(value: any): boolean, string
 ---@param parse? fun(str: string): boolean, any
----@return Netstring.Parser
-function netstring.newParser(stringify, parse)
-    ---@type Netstring.Parser
+---@return Sendstring.Parser
+function sendstring.newParser(stringify, parse)
+    ---@type Sendstring.Parser
     local parser = {
         stringify = stringify or undefinedStringify,
         parse = parse or undefinedParse
@@ -94,51 +94,51 @@ end
 
 --- Defines a new data type
 ---@param name string The name of the data type
----@param parser Netstring.Parser The parser of the data type
-function netstring.defineDataType(name, parser)
-    netstring.dataTypes[name] = parser
+---@param parser Sendstring.Parser The parser of the data type
+function sendstring.defineDataType(name, parser)
+    sendstring.dataTypes[name] = parser
 end
 
 --- Defines a new message type
 ---@param name string The name of the message type
----@param fields Netstring.MessageField[] The fields to come with this message. These can either be generated using `netstring.newMessageField`, or just skip the middleman and add the tables directly.
-function netstring.defineMessageType(name, fields)
-    netstring.messageTypes[name] = fields
+---@param fields Sendstring.MessageField[] The fields to come with this message. These can either be generated using `sendstring.newMessageField`, or just skip the middleman and add the tables directly.
+function sendstring.defineMessageType(name, fields)
+    sendstring.messageTypes[name] = fields
 end
 
---- Creates a field to go into `netstring.messageTypes`
+--- Creates a field to go into `sendstring.messageTypes`
 --- 
 --- Example usage:
 --- ```lua
---- netstring.defineMessageType("Position", {
----     netstring.newMessageField("x", "number"),
----     netstring.newMessageField("y", "number")
+--- sendstring.defineMessageType("Position", {
+---     sendstring.newMessageField("x", "number"),
+---     sendstring.newMessageField("y", "number")
 --- })
 --- ```
 ---@param key string|number The key this data will be present at in the non-stringified table
----@param dataType string The dataType to use for this field, as defined in `netstring.dataTypes`
-function netstring.newMessageField(key, dataType)
-    ---@type Netstring.MessageField
+---@param dataType string The dataType to use for this field, as defined in `sendstring.dataTypes`
+function sendstring.newMessageField(key, dataType)
+    ---@type Sendstring.MessageField
     local field = {
         key = key,
         dataType = dataType
     }
     return field
 end
-netstring.newField = netstring.newMessageField
+sendstring.newField = sendstring.newMessageField
 
 --- Creates a new message (string) from the defined message name and a table of the necessary data (as defined in the message fields)
----@param name string The name of the message as defined in `netstring.messageTypes`
----@param data table All of the keys and values the message expects, as defined in `netstring.messageTypes`
+---@param name string The name of the message as defined in `sendstring.messageTypes`
+---@param data table All of the keys and values the message expects, as defined in `sendstring.messageTypes`
 ---@return string
-function netstring.generateMessage(name, data)
-    local fields = netstring.messageTypes[name]
+function sendstring.generateMessage(name, data)
+    local fields = sendstring.messageTypes[name]
     if not fields then error("Unknown message: '" .. tostring(name) .. "'", 2) end
 
     local msgHeader = {
-        netstring.separatorSeparator,
-        netstring.dataSeparator,
-        netstring.separatorSeparator,
+        sendstring.separatorSeparator,
+        sendstring.dataSeparator,
+        sendstring.separatorSeparator,
         "\n"
     }
     local msgBody = {
@@ -149,7 +149,7 @@ function netstring.generateMessage(name, data)
         local field = fields[fieldIndex]
 
         local parserName = field.dataType
-        local parser = netstring.dataTypes[parserName]
+        local parser = sendstring.dataTypes[parserName]
         if not parser then error("Message has undefined dataType '" .. tostring(parserName) .. "'", 2) end
 
         local key = field.key
@@ -160,23 +160,23 @@ function netstring.generateMessage(name, data)
         msgBody[#msgBody+1] = str
     end
 
-    return table.concat(msgHeader) .. table.concat(msgBody, netstring.dataSeparator)
+    return table.concat(msgHeader) .. table.concat(msgBody, sendstring.dataSeparator)
 end
 
---- The same as `netstring.generateMessage`, but the message name must be provided in the `data` table under the key `_MESSAGE`.
+--- The same as `sendstring.generateMessage`, but the message name must be provided in the `data` table under the key `_MESSAGE`.
 ---@param data table
 ---@return string
-function netstring.generateMessageAuto(data)
+function sendstring.generateMessageAuto(data)
     if not data._MESSAGE then error("Message name not supplied in data", 2) end
-    return netstring.generateMessage(data._MESSAGE, data)
+    return sendstring.generateMessage(data._MESSAGE, data)
 end
 
 --- Attempts to parse the message. Won't error - will either return `true, data` or `false, error`.  
---- This function doesn't need `netstring.dataSeparator` or `netstring.separatorSeparator` set - those are provided by the message.
+--- This function doesn't need `sendstring.dataSeparator` or `sendstring.separatorSeparator` set - those are provided by the message.
 ---@param str string
 ---@return boolean success
 ---@return table|string dataOrError
-function netstring.parseMessage(str)
+function sendstring.parseMessage(str)
     local separatorSeparator = string.sub(str, 1, 1)
     local headerEnd = string.find(str, separatorSeparator, 2, true)
     if not headerEnd then return false, "Malformed header" end
@@ -188,7 +188,7 @@ function netstring.parseMessage(str)
     if not messageNameEnd then return false, "Missing body" end
 
     local messageName = string.sub(str, headerEnd+2, messageNameEnd-1)
-    local fields = netstring.messageTypes[messageName]
+    local fields = sendstring.messageTypes[messageName]
     if not fields then return false, "Unknown message ID" end
 
     local separatorLength = #separator
@@ -202,7 +202,7 @@ function netstring.parseMessage(str)
         local field = fields[fieldIndex]
 
         local parserName = field.dataType
-        local parser = netstring.dataTypes[parserName]
+        local parser = sendstring.dataTypes[parserName]
         if not parser then return false, "Message requires unknown data type: " .. tostring(parserName) end
 
         local dataStart = searchIndex
@@ -233,7 +233,7 @@ end
 --- Careful - some of these make certain dataSeparators unusable, such as a comma.
 
 -- Just lets the string through with no parsing, so this can potentially break any dataSeparator.
-netstring.dataTypes.string = netstring.newParser(
+sendstring.dataTypes.string = sendstring.newParser(
 function (value)
     if type(value) ~= "string" then return false, tostring(value) end
     return true, value
@@ -243,7 +243,7 @@ function (str)
     return true, str
 end)
 
-netstring.dataTypes.number = netstring.newParser(
+sendstring.dataTypes.number = sendstring.newParser(
 function (value)
     if type(value) ~= "number" then return false, "0" end
     return true, tostring(value)
@@ -255,7 +255,7 @@ function (str)
     return true, num
 end)
 
-netstring.dataTypes["number[]"] = netstring.newParser(
+sendstring.dataTypes["number[]"] = sendstring.newParser(
 function (value)
     if type(value) ~= "table" then return false, "" end
     return true, table.concat(value, ",")
@@ -280,4 +280,4 @@ end)
 
 --------------------------------------------------
 
-return netstring
+return sendstring

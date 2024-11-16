@@ -14,7 +14,7 @@ sucket.serverDefaultMaxClients = 64
 --------------------------------------------------
 --- Encoding
 --- (define these please)
---- (or use netstring.lua)
+--- (or use sendstring.lua)
 
 --- To actually retrieve and use the decoded data from incoming messages,
 --- add a `callbacks.receive` function to the receiving server or client.
