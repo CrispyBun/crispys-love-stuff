@@ -18,7 +18,7 @@ latl.langs = {}
 
 --- A set of translations
 ---@class Latl.Language
----@field [string] string Each text identifier (e.g. `"game.items.sword"`) mapped to its translation (e.g. `"Sword"`)
+---@field fields table<string, string> Each text identifier (e.g. `"game.items.sword"`) mapped to its translation (e.g. `"Sword"`)
 
 --------------------------------------------------
 --- Getting translations
@@ -35,7 +35,10 @@ function latl.get(prompt, langcode)
     local language = latl.langs[langcode]
     if not language then return prompt end
 
-    local translation = language[prompt]
+    local fields = language.fields
+    if not fields then return prompt end
+
+    local translation = fields[prompt]
     if not translation then return prompt end
 
     return translation
@@ -65,24 +68,10 @@ end
 function latl.addTranslation(langcode, textID, translation)
     local language = latl.langs[langcode] or {}
     latl.langs[langcode] = language
+    language.fields = language.fields or {}
 
-    language[textID] = translation
+    language.fields[textID] = translation
 end
-
---- Makes the language derive from a specified parent language.
----@param langcode string The language that derives from the other language (e.g. `"en_AU"`)
----@param parentLangcode string The language to derive from (e.g. `"en_GB"`)
-function latl.defineLanguageFallback(langcode, parentLangcode)
-    local child = latl.langs[langcode] or {}
-    latl.langs[langcode] = child
-
-    local parent = latl.langs[parentLangcode] or {}
-    latl.langs[parentLangcode] = parent
-
-    setmetatable(child, {__index = parent})
-end
-
-latl.deriveLanguage = latl.defineLanguageFallback
 
 --------------------------------------------------
 ---@diagnostic disable-next-line: param-type-mismatch
