@@ -16,9 +16,10 @@ latl.langs = {}
 ---@class Latl.LanguageList
 ---@field [string] Latl.Language Each language code (e.g. `"en_US"`) mapped to its language definition
 
---- A set of translations
 ---@class Latl.Language
 ---@field fields table<string, string> Each text identifier (e.g. `"game.items.sword"`) mapped to its translation (e.g. `"Sword"`)
+local Language = {}
+local LanguageMT = {__index = Language}
 
 --------------------------------------------------
 --- Getting translations
@@ -35,13 +36,7 @@ function latl.get(prompt, langcode)
     local language = latl.langs[langcode]
     if not language then return prompt end
 
-    local fields = language.fields
-    if not fields then return prompt end
-
-    local translation = fields[prompt]
-    if not translation then return prompt end
-
-    return translation
+    return language:get(prompt)
 end
 
 ---@param t any
@@ -66,11 +61,34 @@ end
 ---@param textID string The identifier of the translation (e.g. `"game.items.sword"`)
 ---@param translation string The translation itself (e.g. `"Sword"`)
 function latl.addTranslation(langcode, textID, translation)
-    local language = latl.langs[langcode] or {}
+    local language = latl.langs[langcode] or latl.newLanguage()
     latl.langs[langcode] = language
-    language.fields = language.fields or {}
 
     language.fields[textID] = translation
+end
+
+--------------------------------------------------
+--- The Language class
+
+--- Creates a new language object. Use this if you want to manage the language objects yourself,
+--- otherwise this is used internally and you don't have to worry about it.
+---@return Latl.Language
+function latl.newLanguage()
+    ---@type Latl.Language
+    local language = {
+        fields = {}
+    }
+    return setmetatable(language, LanguageMT)
+end
+
+--- Returns the translation of the given `prompt`.
+---@param prompt string
+---@return string
+function Language:get(prompt)
+    local translation = self.fields[prompt]
+    if not translation then return prompt end
+
+    return translation
 end
 
 --------------------------------------------------
