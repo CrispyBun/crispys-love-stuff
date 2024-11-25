@@ -69,6 +69,21 @@ function latl.addTranslation(langcode, textID, translation)
     language[textID] = translation
 end
 
+--- Makes the language derive from a specified parent language.
+---@param langcode string The language that derives from the other language (e.g. `"en_AU"`)
+---@param parentLangcode string The language to derive from (e.g. `"en_GB"`)
+function latl.defineLanguageFallback(langcode, parentLangcode)
+    local child = latl.langs[langcode] or {}
+    latl.langs[langcode] = child
+
+    local parent = latl.langs[parentLangcode] or {}
+    latl.langs[parentLangcode] = parent
+
+    setmetatable(child, {__index = parent})
+end
+
+latl.deriveLanguage = latl.defineLanguageFallback
+
 --------------------------------------------------
 ---@diagnostic disable-next-line: param-type-mismatch
 return setmetatable(latl, latlMT)
