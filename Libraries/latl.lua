@@ -51,7 +51,7 @@ end
 
 --- Sets the currently selected language.
 ---@param langcode string
-function latl.setCurrentLanguage(langcode)
+function latl.setLanguage(langcode)
     latl.currentLanguage = langcode
 end
 
