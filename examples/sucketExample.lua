@@ -2,8 +2,8 @@
 
 ---------------------------------------------
 
-local sucket = require 'Libraries.sucket'
-local sendstring = require 'Libraries.sendstring'
+local sucket = require 'libraries.sucket'
+local sendstring = require 'libraries.sendstring'
 
 ---------------------------------------------
 
