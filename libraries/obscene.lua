@@ -40,6 +40,9 @@ local obscene = {}
 --- There are some built-in ones, but other custom ones can be injected into the class.
 --- The first argument must always be the scene itself, the rest can be anything.
 ---@class Obscene.SceneEvents
+---@field register? fun(scene: Obscene.Scene, manager: Obscene.SceneManager) Called when the scene is registered into a manager (this is the only type of event that will trigger for inactive scenes)
+---@field load? fun(scene: Obscene.Scene, ...) Called when the scene is selected to be active. Useful for setting up the scene and adding objects to it.
+---@field unload? fun(scene: Obscene.Scene) Called when the active scene is switched from this one to a different one. Useful for destroying/resetting the scene and any objects inside it.
 
 ---@class Obscene.SceneManager
 ---@field currentScene? string The currently selected scene which will receive event callbacks
@@ -80,19 +83,27 @@ end
 function SceneManager:registerScene(name, scene)
     if self.scenes[name] then error("A scene is already registered under the name '" .. tostring(scene) .. "'", 2) end
     self.scenes[name] = scene
+
+    if self.callbacks.register then self.callbacks.register(scene, self) end
+    if scene.callbacks.register then scene.callbacks.register(scene, self) end
 end
 SceneManager.addScene = SceneManager.registerScene
 
---- Sets the current scene.
+--- Sets the current scene.  
+--- The optional vararg will be passed into the `load` event callback of the scene, if there is one.
 ---@param sceneName string
-function SceneManager:setScene(sceneName)
+function SceneManager:setScene(sceneName, ...)
     if not self.scenes[sceneName] then error("Scene '" .. tostring(sceneName) .. "' does not exist in this manager", 2) end
+
+    self:announce('unload')
     self.currentScene = sceneName
+    self:announce('load', ...)
 end
 
 --- Makes no scene currently selected (all callbacks will simply be voided on an unselected scene).  
 --- This is the state a new scene manager is in before a scene is selected.
 function SceneManager:unsetScene()
+    self:announce('unload')
     self.currentScene = nil
 end
 
@@ -111,6 +122,19 @@ function SceneManager:getCurrentSceneObject()
     local current = self.currentScene
     if current == nil then return nil end
     return self.scenes[current]
+end
+
+--- Sets (or overwrites) the callback for the given event in the manager.  
+--- The callbacks can also be set directly, like so:
+--- ```lua
+--- manager.callbacks.load = function(scene, ...)
+---     -- ...
+--- end
+--- ```
+---@param event string
+---@param callback function
+function SceneManager:setEventCallback(event, callback)
+    self.callbacks[event] = callback
 end
 
 --- Triggers the callbacks for the given event in the currently active scene (if one is active).
@@ -137,6 +161,19 @@ function obscene.newScene()
         callbacks = {}
     }
     return setmetatable(scene, SceneMT)
+end
+
+--- Sets (or overwrites) the callback for the given event in the scene.  
+--- The callbacks can also be set directly, like so:
+--- ```lua
+--- scene.callbacks.load = function(scene, ...)
+---     -- ...
+--- end
+--- ```
+---@param event string
+---@param callback function
+function Scene:setEventCallback(event, callback)
+    self.callbacks[event] = callback
 end
 
 --- Triggers the callback for the given event in the scene.
