@@ -36,36 +36,25 @@ local obscene = {}
 --- Inject fields into this class to annotate your own scene variables.
 ---@class Obscene.SceneVariables
 
+--- Events that can be called in the scene.  
+--- There are some built-in ones, but other custom ones can be injected into the class.
+--- The first argument must always be the scene itself, the rest can be anything.
+---@class Obscene.SceneEvents
+
 ---@class Obscene.SceneManager
----@field currentScene? string The currently selected scene which will receive callbacks
----@field scenes table<string, Obscene.SceneMaker> All the scenes in this manager, named
+---@field currentScene? string The currently selected scene which will receive event callbacks
+---@field scenes table<string, Obscene.Scene> All the named scenes in the manager
+---@field callbacks Obscene.SceneEvents Callbacks to events that will trigger no matter which scene is active (will not trigger if no scene is active)
 local SceneManager = {}
 local SceneManagerMT = {__index = SceneManager}
 
----@class Obscene.SceneMaker
----@field init? fun(self: Obscene.Scene, ...) Constructor for the scene object
----@field variables Obscene.SceneVariables Variables to be shallow copied into the scene's `variables` table
----@field instancedScene? Obscene.Scene The last scene that was instanced using this scene maker
-local SceneMaker = {}
-local SceneMakerMT = {__index = SceneMaker}
-
 ---@class Obscene.Scene
 ---@field variables Obscene.SceneVariables Variables associated with the scene
+---@field callbacks Obscene.SceneEvents Callbacks to events for the scene
 local Scene = {}
 local SceneMT = {__index = Scene}
 
 -- Managers ----------------------------------------------------------------------------------------
-
---- Creates a new scene manager.
----@return Obscene.SceneManager
-function obscene.newSceneManager()
-    -- new Obscene.SceneManager
-    local manager = {
-        currentScene = nil,
-        scenes = {}
-    }
-    return setmetatable(manager, SceneManagerMT)
-end
 
 --- Always returns the same scene manager.
 ---@return Obscene.SceneManager
@@ -73,11 +62,32 @@ function obscene.getGlobalManager()
     return obscene.globalSceneManager
 end
 
+--- Creates a new scene manager.
+---@return Obscene.SceneManager
+function obscene.newSceneManager()
+    -- new Obscene.SceneManager
+    local manager = {
+        currentScene = nil,
+        scenes = {},
+        callbacks = {}
+    }
+    return setmetatable(manager, SceneManagerMT)
+end
+
+--- Registers a new scene to the manager's scenes.
+---@param name string
+---@param scene Obscene.Scene
+function SceneManager:registerScene(name, scene)
+    if self.scenes[name] then error("A scene is already registered under the name '" .. tostring(scene) .. "'", 2) end
+    self.scenes[name] = scene
+end
+SceneManager.addScene = SceneManager.registerScene
+
 --- Sets the current scene.
----@param scene string
-function SceneManager:setScene(scene)
-    if not self.scenes[scene] then error("Scene '" .. tostring(scene) .. "' does not exist in this manager", 2) end
-    self.currentScene = scene
+---@param sceneName string
+function SceneManager:setScene(sceneName)
+    if not self.scenes[sceneName] then error("Scene '" .. tostring(sceneName) .. "' does not exist in this manager", 2) end
+    self.currentScene = sceneName
 end
 
 --- Makes no scene currently selected (all callbacks will simply be voided on an unselected scene).  
@@ -86,6 +96,59 @@ function SceneManager:unsetScene()
     self.currentScene = nil
 end
 
-obscene.globalSceneManager = obscene.newSceneManager()
+--- If a scene is selected, returns the currently selected scene (string), as well as the scene object itself.
+---@return string?
+---@return Obscene.Scene?
+function SceneManager:getCurrentScene()
+    local current = self.currentScene
+    if current == nil then return nil, nil end
+    return current, self.scenes[current]
+end
 
+--- Returns the currently active scene object, or `nil` if no scene is active.
+---@return Obscene.Scene?
+function SceneManager:getCurrentSceneObject()
+    local current = self.currentScene
+    if current == nil then return nil end
+    return self.scenes[current]
+end
+
+--- Triggers the callbacks for the given event in the currently active scene (if one is active).
+---@param event string
+---@param ... unknown
+---@return unknown?
+function SceneManager:announce(event, ...)
+    local currentScene = self:getCurrentSceneObject()
+    if not currentScene then return end
+
+    if self.callbacks[event] then self.callbacks[event](currentScene, ...) end
+    return currentScene:announce(event, ...)
+end
+SceneManager.callEvent = SceneManager.announce
+
+-- Scenes ------------------------------------------------------------------------------------------
+
+--- Creates a new scene.
+---@return Obscene.Scene
+function obscene.newScene()
+    -- new Obscene.Scene
+    local scene = {
+        variables = {},
+        callbacks = {}
+    }
+    return setmetatable(scene, SceneMT)
+end
+
+--- Triggers the callback for the given event in the scene.
+---@param event string
+---@param ... unknown
+---@return unknown?
+function Scene:announce(event, ...)
+    local callback = self.callbacks[event]
+    if not callback then return end
+    return callback(self, ...)
+end
+Scene.callEvent = Scene.announce
+
+obscene.globalSceneManager = obscene.newSceneManager()
 return obscene
