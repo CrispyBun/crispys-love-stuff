@@ -1007,7 +1007,7 @@ function marker.newMarkedText(str, font, x, y, maxWidth, textAlign, verticalAlig
 
     local paramString, strippedString = stringToTagString(str)
 
-    ---@type Marker.MarkedText
+    -- new Marker.MarkedText
     local markedText = {
         x = x,
         y = y,

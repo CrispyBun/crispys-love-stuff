@@ -166,7 +166,7 @@ function sucket.newServer(ip, port, maxClients)
     if not success then return nil end
     if not host then return nil end
 
-    ---@type Sucket.Server
+    -- new Sucket.Server
     local server = {
         host = host,
         peers = {},
@@ -371,7 +371,7 @@ end
 
 --- Creates a new client.
 function sucket.newClient()
-    ---@type Sucket.Client
+    -- new Sucket.Client
     local client = {
         host = enet.host_create(nil, 1),
         callbacks = {}
