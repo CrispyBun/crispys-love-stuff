@@ -53,14 +53,55 @@ end
 ---@param min integer
 ---@param max integer
 ---@return number
----@overload fun(max: integer): number
----@overload fun(): number
+---@overload fun(self: Roll.RandomGenerator, max: integer): number
+---@overload fun(self: Roll.RandomGenerator): number
 function RandomGenerator:random(min, max)
     return self.generator:random(min, max)
 end
 
 RandomGeneratorMT.__call = function (self, min, max)
     return self:random(min, max)
+end
+
+--- Returns a random value from an array.
+---@generic T
+---@param list T[]
+---@return T value
+---@return integer index
+function RandomGenerator:choose(list)
+    local index = self:random(1, #list)
+    return list[index], index
+end
+
+--- Returns a random value from an array weighted based on the weights in the second array.  
+--- Weights of 0 can't get chosen, unless all weights are 0. Negative weights are considered 0.
+--- ```lua
+--- generator:chooseWeighted({"disallowed", "common", "common", "rare"}, {0, 1, 1, 0.25})
+--- ```
+---@generic T
+---@param list T[]
+---@param weights number[]
+---@return T value
+---@return integer index
+function RandomGenerator:chooseWeighted(list, weights)
+    if #list ~= #weights then error("List of weights must be the same length as the list of values", 2) end
+
+    local weightSum = 0
+    for weightIndex = 1, #weights do
+        weightSum = weightSum + math.max(0, weights[weightIndex])
+    end
+    if weightSum == 0 then return self:choose(list) end
+
+    local target = self:random() * weightSum
+    for weightIndex = 1, #weights do
+        local weight = math.max(0, weights[weightIndex])
+        target = target - weight
+
+        if target <= 0 and weight > 0 then
+            return list[weightIndex], weightIndex
+        end
+    end
+    return list[#list], #list
 end
 
 return roll
