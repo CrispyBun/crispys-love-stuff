@@ -199,20 +199,18 @@ marker.charEffects.corrupt = function (char, arg, time, charIndex, charPrevious)
     local speed = tonumber(arg) or 1
     local progress = math.floor(time * 20 * speed)
 
-    local seedPrevious = marker.functions.getRandomSeed()
     local charSeed = utf8.codepoint(char.text) + progress
     marker.functions.setRandomSeed(charSeed)
 
     local pickedCharIndex = marker.functions.random(1, #corruptChars)
 
     char.text = corruptChars[pickedCharIndex]
-    marker.functions.setRandomSeed(seedPrevious)
+    marker.functions.resetSeed()
 end
 
 marker.charEffects.shatter = function (char, arg, time, charIndex, charPrevious)
     local amount = (tonumber(arg) or 1) * 4
 
-    local seedPrevious = marker.functions.getRandomSeed()
     local charSeed = utf8.codepoint(char.text) + charIndex
     marker.functions.setRandomSeed(charSeed)
 
@@ -221,7 +219,7 @@ marker.charEffects.shatter = function (char, arg, time, charIndex, charPrevious)
     char.xOffset = char.xOffset + xOffset
     char.yOffset = char.yOffset + yOffset
 
-    marker.functions.setRandomSeed(seedPrevious)
+    marker.functions.resetSeed()
 end
 
 marker.charEffects.shake = function (char, arg, time, charIndex, charPrevious)
@@ -231,7 +229,6 @@ marker.charEffects.shake = function (char, arg, time, charIndex, charPrevious)
 
     local progress = math.floor(time * 15 * speed)
 
-    local seedPrevious = marker.functions.getRandomSeed()
     local charSeed = charIndex + progress
     marker.functions.setRandomSeed(charSeed)
 
@@ -240,7 +237,7 @@ marker.charEffects.shake = function (char, arg, time, charIndex, charPrevious)
     char.xOffset = char.xOffset + xOffset
     char.yOffset = char.yOffset + yOffset
 
-    marker.functions.setRandomSeed(seedPrevious)
+    marker.functions.resetSeed()
 end
 
 -- Text effects not added to the order will not be registered
@@ -641,10 +638,19 @@ local love = love
 ---@type table<string, function>
 marker.functions = {}
 
+local randomizer
+if love then randomizer = love.math.newRandomGenerator() end
+
 if love then
-    marker.functions.getRandomSeed = love.math.getRandomSeed
-    marker.functions.setRandomSeed = love.math.setRandomSeed
-    marker.functions.random = love.math.random
+    marker.functions.setRandomSeed = function (seed)
+        randomizer:setSeed(seed)
+    end
+    marker.functions.resetSeed = function ()
+        -- no seet resetting necessary
+    end
+    marker.functions.random = function (min, max)
+        return randomizer:random(min, max)
+    end
 
     marker.functions.getFont = love.graphics.getFont
     marker.functions.setFont = love.graphics.setFont
@@ -657,14 +663,14 @@ if love then
     marker.functions.getCharHeight = function (font) return font:getHeight() end
     marker.functions.drawChar = function (font, text, x, y) return love.graphics.print(text, x, y) end -- font discarded, it was already set in setFont()
 else
-    local currentSeed = os.time()
     local currentFont = {}
     local currentColor = {1, 1, 1, 1}
 
-    marker.functions.getRandomSeed = function () return currentSeed end
     marker.functions.setRandomSeed = function (seed)
-        currentSeed = seed
         math.randomseed(seed)
+    end
+    marker.functions.resetSeed = function ()
+        math.randomseed(os.time() + os.clock())
     end
     marker.functions.random = math.random
 
@@ -686,6 +692,8 @@ else
         currentColor[3] = colors[3] or 1
         currentColor[4] = colors[4] or 1
     end
+
+    -- Platform specific:
 
     marker.functions.newFont = function () return {} end
 
