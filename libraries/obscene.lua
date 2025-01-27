@@ -44,6 +44,7 @@ local obscene = {}
 --- The first argument must always be the scene itself, the rest can be anything.
 ---@class Obscene.SceneEvents
 ---@field register? fun(scene: Obscene.Scene, manager: Obscene.SceneManager) Called when the scene is registered into a manager (this is the only type of event that will trigger for inactive scenes)
+---@field unregister? fun(scene: Obscene.Scene, manager: Obscene.SceneManager) Called when the scene is unregistered from a manager (this is the only type of event that will trigger for inactive scenes)
 ---@field load? fun(scene: Obscene.Scene, ...) Called when the scene is selected to be active. Useful for setting up the scene and adding objects to it.
 ---@field unload? fun(scene: Obscene.Scene) Called when the active scene is switched from this one to a different one. Useful for destroying/resetting the scene and any objects inside it.
 
@@ -92,6 +93,19 @@ function SceneManager:registerScene(name, scene)
     if scene.callbacks.register then scene.callbacks.register(scene, self) end
 end
 SceneManager.addScene = SceneManager.registerScene
+
+--- Unregisters a previously registered scene from the manager.  
+---@param name string
+function SceneManager:unregisterScene(name)
+    if not self.scenes[name] then error("Scene '" .. tostring(name) .. "' does not exist in this manager", 2) end
+    local scene = self.scenes[name]
+
+    if self.callbacks.unregister then self.callbacks.unregister(scene, self) end
+    if scene.callbacks.unregister then scene.callbacks.unregister(scene, self) end
+
+    self.scenes[name] = nil
+end
+SceneManager.removeScene = SceneManager.unregisterScene
 
 --- Sets the current scene.  
 --- The optional vararg will be passed into the `load` event callback of the scene, if there is one.
