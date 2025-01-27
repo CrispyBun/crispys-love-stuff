@@ -36,6 +36,9 @@ local obscene = {}
 --- Inject fields into this class to annotate your own scene variables.
 ---@class Obscene.SceneVariables
 
+--- Same as `Obscene.SceneVariables`, but for managers.
+---@class Obscene.ManagerVariables
+
 --- Events that can be called in the scene.  
 --- There are some built-in ones, but other custom ones can be injected into the class.
 --- The first argument must always be the scene itself, the rest can be anything.
@@ -48,6 +51,7 @@ local obscene = {}
 ---@field currentScene? string The currently selected scene which will receive event callbacks
 ---@field scenes table<string, Obscene.Scene> All the named scenes in the manager
 ---@field callbacks Obscene.SceneEvents Callbacks to events that will trigger no matter which scene is active (will not trigger if no scene is active)
+---@field variables Obscene.ManagerVariables Variables associated with the manager
 local SceneManager = {}
 local SceneManagerMT = {__index = SceneManager}
 
@@ -137,7 +141,12 @@ function SceneManager:setEventCallback(event, callback)
     self.callbacks[event] = callback
 end
 
---- Triggers the callbacks for the given event in the currently active scene (if one is active).
+--- Triggers the callbacks for the given event in the currently active scene (if one is active).  
+--- ```lua
+--- function love.update(dt)
+---     manager:announce('update', dt)
+--- end
+--- ```
 ---@param event string
 ---@param ... unknown
 ---@return unknown?
@@ -149,6 +158,12 @@ function SceneManager:announce(event, ...)
     return currentScene:announce(event, ...)
 end
 SceneManager.callEvent = SceneManager.announce
+
+--- Returns the variables table of the manager, to be read or edited.
+---@return Obscene.ManagerVariables
+function SceneManager:getVariables()
+    return self.variables
+end
 
 -- Scenes ------------------------------------------------------------------------------------------
 
@@ -174,6 +189,12 @@ end
 ---@param callback function
 function Scene:setEventCallback(event, callback)
     self.callbacks[event] = callback
+end
+
+--- Returns the variables table of the scene, to be read or edited.
+---@return Obscene.SceneVariables
+function Scene:getVariables()
+    return self.variables
 end
 
 --- Triggers the callback for the given event in the scene.
