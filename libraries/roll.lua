@@ -30,6 +30,16 @@ SOFTWARE.
 
 local roll = {}
 
+--- This function is used internally to initially seed all new generators.  
+--- Can be overwritten if you want to change the logic.
+---@return number
+function roll.getInitSeed()
+    roll.initSeedOffset = roll.initSeedOffset + 1
+    return os.time() + os.clock() * 1000 + roll.initSeedOffset
+end
+---@type number
+roll.initSeedOffset = 0
+
 -- Types -------------------------------------------------------------------------------------------
 
 ---@class Roll.RandomGenerator
@@ -46,6 +56,8 @@ function roll.newRandomGenerator()
     local generator = {
         generator = love.math.newRandomGenerator()
     }
+    generator.generator:setSeed(roll.getInitSeed())
+
     return setmetatable(generator, RandomGeneratorMT)
 end
 
