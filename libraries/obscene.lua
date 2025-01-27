@@ -45,6 +45,7 @@ local obscene = {}
 ---@class Obscene.SceneEvents
 ---@field register? fun(scene: Obscene.Scene, manager: Obscene.SceneManager) Called when the scene is registered into a manager (this is the only type of event that will trigger for inactive scenes)
 ---@field unregister? fun(scene: Obscene.Scene, manager: Obscene.SceneManager) Called when the scene is unregistered from a manager (this is the only type of event that will trigger for inactive scenes)
+---@field init? fun(scene: Obscene.Scene) Called once when the scene is made active in a manager for the first time. Useful for setting up things in the scene that only ever need to be set up once.
 ---@field load? fun(scene: Obscene.Scene, ...) Called when the scene is selected to be active. Useful for setting up the scene and adding objects to it.
 ---@field unload? fun(scene: Obscene.Scene) Called when the active scene is switched from this one to a different one. Useful for destroying/resetting the scene and any objects inside it.
 
@@ -59,6 +60,7 @@ local SceneManagerMT = {__index = SceneManager}
 ---@class Obscene.Scene
 ---@field variables Obscene.SceneVariables Variables associated with the scene
 ---@field callbacks Obscene.SceneEvents Callbacks to events for the scene
+---@field initCalled boolean Boolean controlling whether the `init` event will be called for this scene the next time it's made active
 local Scene = {}
 local SceneMT = {__index = Scene}
 
@@ -77,7 +79,8 @@ function obscene.newSceneManager()
     local manager = {
         currentScene = nil,
         scenes = {},
-        callbacks = {}
+        callbacks = {},
+        variables = {}
     }
     return setmetatable(manager, SceneManagerMT)
 end
@@ -117,6 +120,7 @@ function SceneManager:setScene(sceneName, ...)
     self.currentScene = sceneName
     self:announce('load', ...)
 end
+SceneManager.switchScene = SceneManager.setScene
 
 --- Makes no scene currently selected (all callbacks will simply be voided on an unselected scene).  
 --- This is the state a new scene manager is in before a scene is selected.
@@ -168,6 +172,11 @@ function SceneManager:announce(event, ...)
     local currentScene = self:getCurrentSceneObject()
     if not currentScene then return end
 
+    if event == 'load' and not currentScene.initCalled then
+        self:announce('init')
+        currentScene.initCalled = true
+    end
+
     if self.callbacks[event] then self.callbacks[event](currentScene, ...) end
     return currentScene:announce(event, ...)
 end
@@ -187,7 +196,8 @@ function obscene.newScene()
     -- new Obscene.Scene
     local scene = {
         variables = {},
-        callbacks = {}
+        callbacks = {},
+        initCalled = false
     }
     return setmetatable(scene, SceneMT)
 end
