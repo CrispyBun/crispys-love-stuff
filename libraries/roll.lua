@@ -147,4 +147,29 @@ function RandomGenerator:d20()
     return self:d(20)
 end
 
+---@return integer low
+---@return integer high
+function RandomGenerator:getSeed()
+    return self.generator:getSeed()
+end
+
+---@param low integer
+---@param high integer
+---@overload fun(self: Roll.RandomGenerator, seed: number)
+function RandomGenerator:setSeed(low, high)
+    if not high then return self.generator:setSeed(low) end
+    return self.generator:setSeed(low, high)
+end
+
+---@return string
+function RandomGenerator:getState()
+    return self.generator:getState()
+end
+
+---@param state string
+function RandomGenerator:setState(state)
+    return self.generator:setState(state)
+end
+
+
 return roll
