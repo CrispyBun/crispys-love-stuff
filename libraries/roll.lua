@@ -128,4 +128,23 @@ function RandomGenerator:shuffle(list)
     return list
 end
 
+--- Rolls a die with the given amount of faces.
+---@param faces integer
+---@return integer
+function RandomGenerator:d(faces)
+    return self:random(1, faces)
+end
+
+--- Rolls a six sided die.
+---@return integer
+function RandomGenerator:d6()
+    return self:d(6)
+end
+
+--- Rolls a 20 sided die.
+---@return integer
+function RandomGenerator:d20()
+    return self:d(20)
+end
+
 return roll
