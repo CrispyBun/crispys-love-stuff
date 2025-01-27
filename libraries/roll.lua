@@ -128,6 +128,20 @@ function RandomGenerator:shuffle(list)
     return list
 end
 
+--- Returns a boolean based on the given probability in the range [0, 1).
+---@param probability number
+---@return boolean
+function RandomGenerator:chance(probability)
+    return self:random() < probability
+end
+
+--- Returns true 50% of the time.
+---@return boolean
+function RandomGenerator:bool()
+    return self:chance(0.5)
+end
+RandomGenerator.coin = RandomGenerator.bool
+
 --- Rolls a die with the given amount of faces.
 ---@param faces integer
 ---@return integer
