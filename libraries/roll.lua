@@ -142,6 +142,30 @@ function RandomGenerator:bool()
 end
 RandomGenerator.coin = RandomGenerator.bool
 
+--- Returns a normally distributed random number.
+---@param stddev? number Standard deviation of the distribution.
+---@param mean? number The mean of the distribution.
+---@return number number Normally distributed random number with variance (stddev)² and the specified mean.
+function RandomGenerator:normal(stddev, mean)
+    return self.generator:randomNormal(stddev, mean)
+end
+
+--- Rolls a random number with no upper bound (or no lower bound, if `increment` is negative).  
+--- Keeps testing chance of `probability` until false and, for each successful roll, adds `increment` to `base`.
+---@param probability? number The chance for each roll that `increment` gets added to `base`. Default is `0.95`.
+---@param base? number The base number that `increment` is added to. Default is `0`.
+---@param increment? number The number that will be added to `base` on each successful roll for probability. Default is `1`.
+---@return number
+function RandomGenerator:limitless(probability, base, increment)
+    probability = probability or 0.95
+    base = base or 0
+    increment = increment or 1
+    while self:chance(probability) do
+        base = base + increment
+    end
+    return base
+end
+
 --- Rolls a die with the given amount of faces.
 ---@param faces integer
 ---@return integer
