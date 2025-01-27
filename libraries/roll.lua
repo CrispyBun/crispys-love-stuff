@@ -116,4 +116,16 @@ function RandomGenerator:chooseWeighted(list, weights)
     return list[#list], #list
 end
 
+--- Shuffles the given array **in place**.
+---@generic T
+---@param list T[]
+---@return T[]
+function RandomGenerator:shuffle(list)
+    for index = #list, 2, -1 do
+        local swappedIndex = self:random(1, index)
+        list[index], list[swappedIndex] = list[swappedIndex], list[index]
+    end
+    return list
+end
+
 return roll
