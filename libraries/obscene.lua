@@ -30,6 +30,14 @@ SOFTWARE.
 
 local obscene = {}
 
+--- A function that can be implemented which is called for all newly created scenes. Useful for setting up scene variables.
+---@type fun(scene: Obscene.Scene)
+obscene.sceneSetup = nil
+
+--- A function that can be implemented which is called for all newly created managers. Useful for setting up manager variables.
+---@type fun(scene: Obscene.SceneManager)
+obscene.managerSetup = nil
+
 -- Types -------------------------------------------------------------------------------------------
 
 --- Variables to be associated with scenes.
@@ -69,6 +77,7 @@ local SceneMT = {__index = Scene}
 --- Always returns the same scene manager.
 ---@return Obscene.SceneManager
 function obscene.getGlobalManager()
+    obscene.globalSceneManager = obscene.globalSceneManager or obscene.newSceneManager()
     return obscene.globalSceneManager
 end
 
@@ -82,7 +91,10 @@ function obscene.newSceneManager()
         callbacks = {},
         variables = {}
     }
-    return setmetatable(manager, SceneManagerMT)
+
+    setmetatable(manager, SceneManagerMT)
+    if obscene.managerSetup then obscene.managerSetup(manager) end
+    return manager
 end
 
 --- Registers a new scene to the manager's scenes.
@@ -199,7 +211,10 @@ function obscene.newScene()
         callbacks = {},
         initCalled = false
     }
-    return setmetatable(scene, SceneMT)
+
+    setmetatable(scene, SceneMT)
+    if obscene.sceneSetup then obscene.sceneSetup(scene) end
+    return scene
 end
 
 --- Sets (or overwrites) the callback for the given event in the scene.  
@@ -232,5 +247,4 @@ function Scene:announce(event, ...)
 end
 Scene.callEvent = Scene.announce
 
-obscene.globalSceneManager = obscene.newSceneManager()
 return obscene
