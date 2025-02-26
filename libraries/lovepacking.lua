@@ -53,7 +53,7 @@ local InputTextureMT = {__index = InputTexture}
 
 ---@class Packing.PackingTree
 ---@field inputTextures Packing.InputTexture[] The textures to be packed into the atlas
----@field rootNode Packing.PackingTreeNode
+---@field rootNode? Packing.PackingTreeNode
 local PackingTree = {}
 local PackingTreeMT = {__index = PackingTree}
 
@@ -62,6 +62,8 @@ local PackingTreeMT = {__index = PackingTree}
 ---@field y number
 ---@field width number
 ---@field height number
+---@field rightNode? Packing.PackingTree
+---@field bottomNode? Packing.PackingTree
 local PackingTreeNode = {}
 local PackingTreeNodeMT = {__index = PackingTreeNode}
 
@@ -236,6 +238,75 @@ function PackingTree:addInputTextures(inputTextures)
         self:addInputTexture(inputTextures[inputIndex])
     end
     return self
+end
+
+--- Deletes all the calculated nodes of the tree.
+function PackingTree:clear()
+    self.rootNode = nil
+end
+
+---@param a Packing.InputTexture
+---@param b Packing.InputTexture
+local function compareInputTextures(a, b)
+    local aWidth, aHeight = a:getDimensions()
+    local bWidth, bHeight = b:getDimensions()
+    return math.max(aWidth, aHeight) > math.max(bWidth, bHeight)
+end
+
+--- Generates the tree of packed textures.
+function PackingTree:pack()
+    self:clear()
+
+    local inputTextures = self.inputTextures
+    table.sort(inputTextures, compareInputTextures)
+
+    if #inputTextures == 0 then return end
+
+    for textureIndex = 1, #inputTextures do
+        local texture = inputTextures[textureIndex]
+        self:injectTexture(texture)
+    end
+end
+PackingTree.calulate = PackingTree.pack
+
+--- Injects a texture into the first node it fits into. Used internally.  
+--- To add textures to be packed, use `PackingTree:addInputTexture()` instead.
+--- 
+--- The textures should be inserted after being sorted properly largest to smallest, otherwise this might fail.
+---@param texture Packing.InputTexture
+function PackingTree:injectTexture(texture)
+    if not self.rootNode then
+        local textureWidth, textureHeight = texture:getDimensions()
+        self.rootNode = packing.newPackingTreeNode(0, 0, textureWidth, textureHeight)
+        return self.rootNode
+    end
+
+    local success = self.rootNode:injectTexture(texture)
+end
+
+-- Nodes of the tree -------------------------------------------------------------------------------
+
+--- Creates a new packing tree node. Used internally.
+---@param x? number
+---@param y? number
+---@param width? number
+---@param height? number
+---@return Packing.PackingTreeNode
+function packing.newPackingTreeNode(x, y, width, height)
+    -- new Packing.PackingTreeNode
+    local node = {
+        x = x or 0,
+        y = y or 0,
+        width = width or 0,
+        height = height or 0
+    }
+    return setmetatable(node, PackingTreeNodeMT)
+end
+
+--- Injects a texture to the first free node it finds for (if any) it and splits the node accordingly.
+---@param texture Packing.InputTexture
+function PackingTreeNode:injectTexture(texture)
+    error("Not yet implemented")
 end
 
 return packing
