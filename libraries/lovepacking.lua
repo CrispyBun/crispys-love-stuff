@@ -58,12 +58,13 @@ local PackingTree = {}
 local PackingTreeMT = {__index = PackingTree}
 
 ---@class Packing.PackingTreeNode
+---@field assignedTexture? Packing.InputTexture|true Either the assigned texture or simply true if it should be considered as assigned, even though there isn't actually a texture
 ---@field x number
 ---@field y number
 ---@field width number
 ---@field height number
----@field rightNode? Packing.PackingTree
----@field bottomNode? Packing.PackingTree
+---@field rightNode? Packing.PackingTreeNode
+---@field bottomNode? Packing.PackingTreeNode
 local PackingTreeNode = {}
 local PackingTreeNodeMT = {__index = PackingTreeNode}
 
@@ -250,7 +251,19 @@ end
 local function compareInputTextures(a, b)
     local aWidth, aHeight = a:getDimensions()
     local bWidth, bHeight = b:getDimensions()
-    return math.max(aWidth, aHeight) > math.max(bWidth, bHeight)
+
+    local maxSideA = math.max(aWidth, aHeight)
+    local maxSideB = math.max(bWidth, bHeight)
+    if maxSideA ~= maxSideB then return maxSideA > maxSideB end
+
+    local areaA = aWidth * aHeight
+    local areaB = bWidth * bHeight
+    if areaA ~= areaB then return areaA > areaB end
+
+    if aHeight ~= bHeight then return aHeight > bHeight end
+    if aWidth ~= bWidth then return aWidth > bWidth end
+
+    return false
 end
 
 --- Generates the tree of packed textures.
@@ -278,10 +291,69 @@ function PackingTree:injectTexture(texture)
     if not self.rootNode then
         local textureWidth, textureHeight = texture:getDimensions()
         self.rootNode = packing.newPackingTreeNode(0, 0, textureWidth, textureHeight)
+        self.rootNode:assignTexture(texture)
         return self.rootNode
     end
 
     local success = self.rootNode:injectTexture(texture)
+    if not success then
+        local newNode = self:growRootNode(texture:getDimensions())
+        local guaranteedSuccess = newNode:injectTexture(texture)
+        if not guaranteedSuccess then
+            error("???")
+        end
+    end
+end
+
+--- Used internally.
+---@param addedAreaWidth number
+---@param addedAreaHeight number
+---@return Packing.PackingTreeNode newAreaNode
+function PackingTree:growRootNode(addedAreaWidth, addedAreaHeight)
+    local rootNode = self.rootNode
+    if not rootNode then
+        error("Can't grow root node - no root node exists", 2)
+    end
+
+    local x, y, width, height = rootNode:getBounds()
+
+    local canGrowRight = addedAreaHeight <= height
+    local canGrowDown = addedAreaWidth <= width
+    if not (canGrowRight or canGrowDown) then
+        -- this should be impossible to trigger as long as the textures are sorted by size
+        -- and the node is grown only by progressively smaller sizes
+        error("Attempting to grow node in both directions at the same time", 2)
+    end
+
+    local rightGrownWidth = width + addedAreaWidth
+    local downGrownHeight = height + addedAreaHeight
+
+    local growRight = canGrowRight
+    if growRight and canGrowDown then
+        local rightGrownSideDifference = math.abs(rightGrownWidth - height)
+        local downGrownSideDifference = math.abs(width - downGrownHeight)
+        local growingRightMakesBetterSquare = rightGrownSideDifference < downGrownSideDifference
+
+        if not growingRightMakesBetterSquare then
+            growRight = false
+        end
+    end
+
+    if growRight then
+        local newRootNode = packing.newPackingTreeNode(x, y, rightGrownWidth, height)
+        newRootNode.assignedTexture = true
+        newRootNode.rightNode = packing.newPackingTreeNode(x + width, y, addedAreaWidth, height)
+        newRootNode.bottomNode = rootNode
+        self.rootNode = newRootNode
+        return self.rootNode.rightNode
+    end
+
+    local newRootNode = packing.newPackingTreeNode(x, y, width, downGrownHeight)
+    newRootNode.assignedTexture = true
+    newRootNode.rightNode = rootNode
+    newRootNode.bottomNode = packing.newPackingTreeNode(x, y + height, width, addedAreaHeight)
+    self.rootNode = newRootNode
+    return self.rootNode.bottomNode
 end
 
 -- Nodes of the tree -------------------------------------------------------------------------------
@@ -305,8 +377,78 @@ end
 
 --- Injects a texture to the first free node it finds for (if any) it and splits the node accordingly.
 ---@param texture Packing.InputTexture
+---@return Packing.PackingTreeNode? usedNode
 function PackingTreeNode:injectTexture(texture)
-    error("Not yet implemented")
+    -- if the node is already used up, forward the inject to any neighboring nodes
+    if self.assignedTexture then
+        ---@type Packing.PackingTreeNode?
+        local foundNode
+        if self.rightNode then
+            foundNode = self.rightNode:injectTexture(texture)
+        end
+        if not foundNode and self.bottomNode then
+            foundNode = self.bottomNode:injectTexture(texture)
+        end
+        return foundNode
+    end
+
+    local textureWidth, textureHeight = texture:getDimensions()
+    local nodeWidth, nodeHeight = self:getDimensions()
+
+    -- Technically we could try to forward to neighbor nodes here,
+    -- but it's safe to assume all further nodes in the tree will be too small as well
+    if textureWidth > nodeWidth then return nil end
+    if textureHeight > nodeHeight then return nil end
+
+    self:assignTexture(texture)
+    self:split(textureWidth, textureHeight)
+    return self
+end
+
+--- Gives the node a new size and creates a `rightNode` and a `bottomNode` to fill in its previous space.
+---@param newWidth number
+---@param newHeight number
+function PackingTreeNode:split(newWidth, newHeight)
+    if self.rightNode or self.bottomNode then
+        error("Can't split node which already has neighbor nodes", 2)
+    end
+
+    local x, y, width, height = self:getBounds()
+    if newWidth > width or newHeight > height then
+        error("Can't split node to be a greater size than it already is", 2)
+    end
+
+    self.rightNode = packing.newPackingTreeNode(x+newWidth, y, width-newWidth, newHeight)
+    self.bottomNode = packing.newPackingTreeNode(x, y+newHeight, width, height-newHeight)
+    self:setSize(newWidth, newHeight)
+end
+
+---@param texture Packing.InputTexture
+function PackingTreeNode:assignTexture(texture)
+    self.assignedTexture = texture
+end
+
+---@return number x
+---@return number y
+---@return number width
+---@return number height
+function PackingTreeNode:getBounds()
+    return self.x, self.y, self.width, self.height
+end
+
+---@return number width
+---@return number height
+function PackingTreeNode:getDimensions()
+    return self.width, self.height
+end
+
+---@param width number
+---@param height number
+---@return self
+function PackingTreeNode:setSize(width, height)
+    self.width = width
+    self.height = height
+    return self
 end
 
 return packing
