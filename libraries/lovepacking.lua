@@ -60,6 +60,7 @@ local TextureMapMT = {__index = TextureMap}
 
 ---@class Packing.PackingTree
 ---@field inputTextures Packing.InputTexture[] The textures to be packed into the atlas
+---@field maxSize? integer The maximum size (of each side) of the final texture atlas. If this size were to be exceeded, a new PackingTree will be created for the remaining textures.
 ---@field rootNode? Packing.PackingTreeNode
 local PackingTree = {}
 local PackingTreeMT = {__index = PackingTree}
@@ -257,13 +258,27 @@ function PackingTree:addNewInputTexture(id, texture, quad, order)
 end
 
 --- Adds an array of input textures to the tree.
----@param inputTextures any
----@return Packing.PackingTree
+---@param inputTextures Packing.InputTexture[]
+---@return self self
 function PackingTree:addInputTextures(inputTextures)
     for inputIndex = 1, #inputTextures do
         self:addInputTexture(inputTextures[inputIndex])
     end
     return self
+end
+
+--- Sets the max size (of each side) of the final packed texture atlas.
+--- 
+--- This is an advanced usage for when you want to split your texture atlases into multiple ones with the same size.
+--- When a max size is set, `PackingTree:pack()` may return another packing tree containing the remaining textures which didn't fit into this tree.
+--- That tree will then need to be packed too, which may return another tree, etc.
+--- 
+--- You can then manually call `PackingTree:render()` on those trees to get the individual atlases. 
+--- 
+--- Note that this may result in animations being spread across multiple texture atlases.
+---@param size integer
+function PackingTree:setMaxSize(size)
+    self.maxSize = size
 end
 
 --- Deletes all the calculated nodes of the tree.
@@ -313,6 +328,8 @@ end
 ---@return number width
 ---@return number height
 function PackingTree:getDimensions()
+    if self.maxSize then return self.maxSize, self.maxSize end
+
     local rootNode = self.rootNode
     if not rootNode then return 1, 1 end
 
@@ -343,6 +360,10 @@ local function compareInputTextures(a, b)
 end
 
 --- Generates the packed texture tree from the previously inputted textures.
+--- 
+--- If a max size is set for this packing tree and it is exceeded while packing,
+--- this function will return another packing tree with its input textures set to the ones that didn't fit into this one, or nil if all fit.
+---@return Packing.PackingTree? leftoverTexturesTree
 function PackingTree:pack()
     self:clear()
 
@@ -351,9 +372,32 @@ function PackingTree:pack()
 
     if #inputTextures == 0 then return end
 
+    if self.maxSize then
+        local maxTextureW, maxTextureH = inputTextures[1]:getDimensions()
+        if maxTextureW > self.maxSize or maxTextureH > self.maxSize then
+            error("The max size set for the packing tree isn't big enough to contain some of the inputted textures")
+        end
+    end
+
+    local leftoverTextures
     for textureIndex = 1, #inputTextures do
         local texture = inputTextures[textureIndex]
-        self:injectTexture(texture)
+        local success = self:injectTexture(texture)
+
+        if not success then
+            leftoverTextures = leftoverTextures or {}
+            leftoverTextures[#leftoverTextures+1] = texture
+        end
+    end
+
+    if leftoverTextures then
+        if not self.maxSize then error("Some textures were not packed even though no max size is set. This should be impossible.") end
+
+        local nextTree = packing.newPackingTree()
+        nextTree:setMaxSize(self.maxSize)
+        nextTree:addInputTextures(leftoverTextures)
+
+        return nextTree
     end
 end
 PackingTree.calulate = PackingTree.pack
@@ -363,22 +407,35 @@ PackingTree.calulate = PackingTree.pack
 --- 
 --- The textures should be inserted after being sorted properly largest to smallest, otherwise this might fail.
 ---@param texture Packing.InputTexture
+---@return boolean success
 function PackingTree:injectTexture(texture)
     if not self.rootNode then
-        local textureWidth, textureHeight = texture:getDimensions()
-        self.rootNode = packing.newPackingTreeNode(0, 0, textureWidth, textureHeight)
-        self.rootNode:assignTexture(texture)
-        return self.rootNode
+        if self.maxSize then
+            self.rootNode = packing.newPackingTreeNode(0, 0, self.maxSize, self.maxSize)
+            self.rootNode:injectTexture(texture)
+            return true
+        else
+            self.rootNode = packing.newPackingTreeNode(0, 0, texture:getDimensions())
+            self.rootNode:assignTexture(texture)
+            return true
+        end
     end
 
     local success = self.rootNode:injectTexture(texture)
     if not success then
+        if self.maxSize then
+            -- can't grow
+            return false
+        end
+
         local newNode = self:growRootNode(texture:getDimensions())
         local guaranteedSuccess = newNode:injectTexture(texture)
         if not guaranteedSuccess then
             error("???")
         end
     end
+
+    return true
 end
 
 --- Used internally.
