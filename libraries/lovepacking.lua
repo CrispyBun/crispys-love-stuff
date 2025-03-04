@@ -50,6 +50,13 @@ local InputTextureMT = {__index = InputTexture}
 ---@class Packing.PackedTexture
 ---@field atlas love.Texture The packed atlas the texture belongs to
 ---@field quad love.Quad The part of the packed atlas the texture is packed to
+---@field order number The order as defined by the InputTexture
+
+---@class Packing.TextureMap
+---@field atlas love.Texture
+---@field mapped table<string, Packing.PackedTexture[]>
+local TextureMap = {}
+local TextureMapMT = {__index = TextureMap}
 
 ---@class Packing.PackingTree
 ---@field inputTextures Packing.InputTexture[] The textures to be packed into the atlas
@@ -129,6 +136,24 @@ function InputTexture:getDimensionsPaddingless()
     local width, height = self.texture:getDimensions()
     if self.quad then _, _, width, height = self.quad:getViewport() end
     return width, height
+end
+
+---@return number padLeft
+---@return number padTop
+---@return number padRight
+---@return number padBottom
+function InputTexture:getPaddingDimensions()
+    local paddingMode = self.paddingMode
+
+    if paddingMode == "none" then
+        return 0,0,0,0
+    end
+
+    if paddingMode == "grow" then
+        return 1,1,1,1
+    end
+
+    error("Unknown padding mode: " .. tostring(paddingMode))
 end
 
 --- Draws the input texture as it will be drawn onto the packed atlas.
@@ -246,6 +271,57 @@ function PackingTree:clear()
     self.rootNode = nil
 end
 
+--- Packs all the textures and renders them onto a canvas, returning the `TextureMap`.  
+--- Equivalent to `PackingTree:pack()` followed by `PackingTree:render()`.
+---@return Packing.TextureMap
+function PackingTree:run()
+    self:pack()
+    return self:render()
+end
+
+--- Creates a new canvas, renders the packed textures to it, and returns a `TextureMap` containing info about all packed textures.
+--- The textures must be packed first using `PackingTree:pack()`.
+---@return Packing.TextureMap
+function PackingTree:render()
+    local width, height = self:getDimensions()
+    local canvas = love.graphics.newCanvas(width, height)
+    local map = packing.newTextureMap(canvas)
+
+    local previousCanvas = love.graphics.getCanvas() -- will lose information about multiple set canvases!
+
+    love.graphics.setCanvas(canvas)
+    self:draw(0, 0, map)
+    love.graphics.setCanvas(previousCanvas)
+
+    return map
+end
+
+--- Draws the packing tree as it will be drawn onto the rendered canvas.
+--- You likely don't need to use this, instead use `PackingTree:render()`.
+---@param x? number The X position to draw at
+---@param y? number The Y position to draw at
+---@param map? Packing.TextureMap The map to save the locations of the textures to
+function PackingTree:draw(x, y, map)
+    x = x or 0
+    y = y or 0
+    local rootNode = self.rootNode
+    if not rootNode then return end
+    rootNode:draw(x, y, map)
+end
+
+--- Returns the dimensions the resulting rendered canvas will have if the tree is rendered now.
+---@return number width
+---@return number height
+function PackingTree:getDimensions()
+    local rootNode = self.rootNode
+    if not rootNode then return 1, 1 end
+
+    local width, height = rootNode.width, rootNode.height
+    if width <= 0 then width = 1 end
+    if height <= 0 then height = 1 end
+    return width, height
+end
+
 ---@param a Packing.InputTexture
 ---@param b Packing.InputTexture
 local function compareInputTextures(a, b)
@@ -266,7 +342,7 @@ local function compareInputTextures(a, b)
     return false
 end
 
---- Generates the tree of packed textures.
+--- Generates the packed texture tree from the previously inputted textures.
 function PackingTree:pack()
     self:clear()
 
@@ -449,6 +525,84 @@ function PackingTreeNode:setSize(width, height)
     self.width = width
     self.height = height
     return self
+end
+
+---@param xOffset? number
+---@param yOffset? number
+---@param map? Packing.TextureMap
+function PackingTreeNode:draw(xOffset, yOffset, map)
+    local x = self.x + (xOffset or 0)
+    local y = self.y + (yOffset or 0)
+
+    local assignedTexture = self.assignedTexture
+    if type(assignedTexture) == "table" then
+        assignedTexture:draw(x, y)
+        if map then
+            local padLeft, padTop = assignedTexture:getPaddingDimensions()
+            local mappedWidth, mappedHeight = assignedTexture:getDimensionsPaddingless()
+            map:addMapping(assignedTexture.id, x+padLeft, y+padTop, mappedWidth, mappedHeight, assignedTexture.order)
+        end
+    end
+
+    if self.rightNode then self.rightNode:draw(xOffset, yOffset, map) end
+    if self.bottomNode then self.bottomNode:draw(xOffset, yOffset, map) end
+end
+
+-- Texture maps ------------------------------------------------------------------------------------
+
+---@param atlas love.Texture
+---@return Packing.TextureMap
+function packing.newTextureMap(atlas)
+    -- new Packing.TextureMap
+    local map = {
+        atlas = atlas,
+        mapped = {},
+    }
+    return setmetatable(map, TextureMapMT)
+end
+
+--- Returns the textures mapped to the given ID.
+---@param id string
+---@return Packing.PackedTexture[]
+function TextureMap:get(id)
+    self.mapped[id] = self.mapped[id] or {}
+    return self.mapped[id]
+end
+
+--- Returns a single texture mapped to the given ID (assumes at least 1 texture is mapped to the ID).
+---@param id string
+---@return Packing.PackedTexture
+function TextureMap:getSingle(id)
+    return self:get(id)[1]
+end
+
+--- Used internally.
+---@param id string
+---@param x number
+---@param y number
+---@param width number
+---@param height number
+---@param order? number
+function TextureMap:addMapping(id, x, y, width, height, order)
+    local quad = love.graphics.newQuad(x, y, width, height, self.atlas)
+    order = order or 0
+
+    ---@type Packing.PackedTexture
+    local addedTexture = {
+        atlas = self.atlas,
+        quad = quad,
+        order = order
+    }
+
+    local textures = self:get(id)
+
+    local insertedIndex = #textures+1
+    for textureIndex = #textures, 1, -1 do
+        local texture = textures[textureIndex]
+        if order >= texture.order then break end
+        insertedIndex = textureIndex
+    end
+    table.insert(textures, insertedIndex, addedTexture)
 end
 
 return packing
