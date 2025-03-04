@@ -647,6 +647,29 @@ function TextureMap:toTable()
     return t, self.atlas
 end
 
+--- Returns all the texture IDs present in the map.
+---@return string[]
+function TextureMap:getIDs()
+    local ids = {}
+    for key in pairs(self.mapped) do
+        ids[#ids+1] = key
+    end
+    return ids
+end
+TextureMap.getIds = TextureMap.getIDs
+
+--- Merges another TextureMap's mapped textures into this one.
+--- They will keep the reference to their atlas, but this texture map will still point to the same atlas,
+--- so information about the texture atlases may be lost if using functions like `TextureMap:toTable()`.
+---@param otherMap Packing.TextureMap
+function TextureMap:merge(otherMap)
+    for id, textures in pairs(otherMap.mapped) do
+        for _, texture in ipairs(textures) do
+            self:insertPackedTexture(id, texture)
+        end
+    end
+end
+
 --- Used internally.
 ---@param id string
 ---@param x number
@@ -665,12 +688,19 @@ function TextureMap:addMapping(id, x, y, width, height, order)
         order = order
     }
 
+    self:insertPackedTexture(id, addedTexture)
+end
+
+--- Used internally.
+---@param id string
+---@param addedTexture Packing.PackedTexture
+function TextureMap:insertPackedTexture(id, addedTexture)
     local textures = self:get(id)
 
     local insertedIndex = #textures+1
     for textureIndex = #textures, 1, -1 do
         local texture = textures[textureIndex]
-        if order >= texture.order then break end
+        if addedTexture.order >= texture.order then break end
         insertedIndex = textureIndex
     end
     table.insert(textures, insertedIndex, addedTexture)
