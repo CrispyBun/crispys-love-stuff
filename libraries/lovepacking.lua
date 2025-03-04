@@ -576,6 +576,20 @@ function TextureMap:getSingle(id)
     return self:get(id)[1]
 end
 
+--- Returns a regular lua table mapping the quads of the textures for each ID, as well as the texture atlas as the second argument.
+---@return table<string, love.Quad[]> quads
+---@return love.Texture atlas
+function TextureMap:toTable()
+    local t = {}
+    for id, packedTextures in pairs(self.mapped) do
+        t[id] = #packedTextures > 0 and {} or nil
+        for index, packedTexture in ipairs(packedTextures) do
+            t[id][index] = packedTexture.quad
+        end
+    end
+    return t, self.atlas
+end
+
 --- Used internally.
 ---@param id string
 ---@param x number
