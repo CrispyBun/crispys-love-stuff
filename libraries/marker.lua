@@ -133,15 +133,21 @@ function MarkedText:layout()
 
         local tallestCharHeight = 0
 
+        local charPrevious ---@type Marker.EffectChar?
         for charIndex = lineStartIndex, lineEndIndex do
             local char = chars[charIndex]
             local charWidth = char:getWidth()
             local charHeight = char:getHeight(true)
 
+            local kerning = charPrevious and charPrevious:getKerning(char) or 0
+            nextX = nextX + kerning
+
             char:setPlacement(nextX, nextY)
 
-            nextX = nextX + charWidth -- TODO: kerning
+            nextX = nextX + charWidth
             tallestCharHeight = math.max(tallestCharHeight, charHeight)
+
+            charPrevious = char
         end
 
         nextX = 0
@@ -217,6 +223,20 @@ function EffectChar:getHeight(includeLineHeight)
     return self.font:getHeight(includeLineHeight)
 end
 
+---@param nextChar Marker.EffectChar
+function EffectChar:getKerning(nextChar)
+    local fontA = self.font
+    local fontB = nextChar.font
+    local strA = self.str
+    local strB = nextChar.str
+
+    -- It's possible the fonts look identical (could be the same love font in there) or just have compatible kerning,
+    -- but it's unlikely that a situation like that would even happen (why switch the font when it looks the same).
+    if fontA ~= fontB then return 0 end
+
+    return fontA:getKerning(strA, strB)
+end
+
 ---@return boolean
 function EffectChar:isLineEnding()
     return self.str == "\n"
@@ -247,6 +267,13 @@ end
 ---@param includeLineHeight? boolean
 ---@return number
 function AbstractFont:getHeight(includeLineHeight)
+    return 0
+end
+
+---@param leftChar string
+---@param rightChar string
+---@return number
+function AbstractFont:getKerning(leftChar, rightChar)
     return 0
 end
 
@@ -290,6 +317,13 @@ end
 function LoveFont:getHeight(includeLineHeight)
     if includeLineHeight then return self.font:getHeight() * self.font:getLineHeight() end
     return self.font:getHeight()
+end
+
+---@param leftChar string
+---@param rightChar string
+---@return number
+function LoveFont:getKerning(leftChar, rightChar)
+    return self.font:getKerning(leftChar, rightChar)
 end
 
 ---@param str string
