@@ -36,6 +36,8 @@ local marker = {}
 
 --- The object capable of generating and drawing an animated text with effects
 ---@class Marker.MarkedText
+---@field x number The X coordinate of the text
+---@field y number The Y coordinate of the text
 ---@field font Marker.Font The font used to generate and render the text
 ---@field inputString string The string used to generate the text
 ---@field effectChars Marker.EffectChar[] The generated EffectChars
@@ -78,6 +80,8 @@ function marker.newMarkedText(str, font)
 
     -- new Marker.MarkedText
     local markedText = {
+        x = 0,
+        y = 0,
         font = font or marker.getDefaultFont(),
         inputString = str or "",
         effectChars = {}
@@ -87,6 +91,13 @@ function marker.newMarkedText(str, font)
     markedText:generate()
 
     return markedText
+end
+
+---@param x number
+---@param y number
+function MarkedText:setPosition(x, y)
+    self.x = x
+    self.y = y
 end
 
 --- Regenerates the entire MarkedText, optionally using a different input string
@@ -110,11 +121,16 @@ function MarkedText:generate(str)
     self:layout()
 end
 
-function MarkedText:draw()
+---@param x? number
+---@param y? number
+function MarkedText:draw(x, y)
+    x = x or self.x
+    y = y or self.y
+
     local chars = self.effectChars
     for charIndex = 1, #chars do
         local char = chars[charIndex]
-        char:draw()
+        char:draw(x, y)
     end
 end
 
@@ -249,11 +265,16 @@ function EffectChar:setPlacement(x, y)
     self.yPlacement = y
 end
 
-function EffectChar:draw()
+---@param x? number
+---@param y? number
+function EffectChar:draw(x, y)
+    x = x or 0
+    y = y or 0
+
     local str = self.str
-    local x = self.xPlacement + self.xOffset
-    local y = self.yPlacement + self.yOffset
-    self.font:draw(str, x, y)
+    local drawnX = x + self.xPlacement + self.xOffset
+    local drawnY = y + self.yPlacement + self.yOffset
+    self.font:draw(str, drawnX, drawnY)
 end
 
 -- Font stuff --------------------------------------------------------------------------------------
