@@ -38,6 +38,7 @@ local marker = {}
 ---@class Marker.MarkedText
 ---@field x number The X coordinate of the text
 ---@field y number The Y coordinate of the text
+---@field wrapLimit number How wide the text is allowed to be before it must wrap
 ---@field font Marker.Font The font used to generate and render the text
 ---@field inputString string The string used to generate the text
 ---@field effectChars Marker.EffectChar[] The generated EffectChars
@@ -71,8 +72,11 @@ local LoveFontMT = {__index = LoveFont}
 --- Creates a new fancy MarkedText object
 ---@param str? string
 ---@param font? love.Font|Marker.Font
+---@param x? number
+---@param y? number
+---@param wrapLimit? number
 ---@return Marker.MarkedText
-function marker.newMarkedText(str, font)
+function marker.newMarkedText(str, font, x, y, wrapLimit)
     if type(font) == "userdata" then
         ---@diagnostic disable-next-line: param-type-mismatch
         font = marker.newWrappedLoveFont(font)
@@ -80,8 +84,9 @@ function marker.newMarkedText(str, font)
 
     -- new Marker.MarkedText
     local markedText = {
-        x = 0,
-        y = 0,
+        x = x or 0,
+        y = y or 0,
+        wrapLimit = wrapLimit or math.huge,
         font = font or marker.getDefaultFont(),
         inputString = str or "",
         effectChars = {}
@@ -93,11 +98,18 @@ function marker.newMarkedText(str, font)
     return markedText
 end
 
+--- Sets the text's position. The layout does not need to be updated.
 ---@param x number
 ---@param y number
 function MarkedText:setPosition(x, y)
     self.x = x
     self.y = y
+end
+
+--- Sets the text's wrap limit. The layout must be updated for this to take effect.
+---@param wrapLimit number
+function MarkedText:setWrapLimit(wrapLimit)
+    self.wrapLimit = wrapLimit
 end
 
 --- Regenerates the entire MarkedText, optionally using a different input string
@@ -181,25 +193,30 @@ function MarkedText:getWrap()
     local currentLineWidth = 0
     local currentLineCharCount = 0
 
-    local wrapLimit = math.huge
+    local wrapLimit = self.wrapLimit
 
+    local charPrevious ---@type Marker.EffectChar?
     local mustWrapNextIteration = false
     for charIndex = 1, #chars do
         local char = chars[charIndex]
         local charWidth = char:getWidth()
 
-        if (not mustWrapNextIteration) and (currentLineWidth + charWidth <= wrapLimit or currentLineCharCount == 0) then
+        local kerning = charPrevious and charPrevious:getKerning(char) or 0
+        local charWidthKerned = charWidth + kerning
+
+        if (not mustWrapNextIteration) and (currentLineWidth + charWidthKerned <= wrapLimit or currentLineCharCount == 0) then
             currentLineCharCount = currentLineCharCount + 1
-            currentLineWidth = currentLineWidth + charWidth
+            currentLineWidth = currentLineWidth + charWidthKerned
         else
             currentLineCharCount = 1
-            currentLineWidth = charWidth
+            currentLineWidth = charWidth -- wrapped, kerning doesn't apply
 
             lineEndings[#lineEndings+1] = charIndex-1
         end
 
         largestLineWidth = math.max(largestLineWidth, currentLineWidth)
         mustWrapNextIteration = char:isLineEnding()
+        charPrevious = char
     end
 
     lineEndings[#lineEndings+1] = #chars
