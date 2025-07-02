@@ -194,30 +194,41 @@ function MarkedText:getWrap()
 
     local wrapLimit = self.wrapLimit
 
+    local idealLineEnd ---@type integer?
     local charPrevious ---@type Marker.EffectChar?
-    local mustWrapNextIteration = false
-    for charIndex = 1, #chars do
+    local shouldWrapNextIteration = false
+
+    local charIndex = 1
+    local charsLength = #chars
+    while charIndex <= charsLength do
         local char = chars[charIndex]
         local charWidth = char:getWidth()
 
         local kerning = charPrevious and charPrevious:getKerning(char) or 0
         local charWidthKerned = charWidth + kerning
 
-        if (not mustWrapNextIteration) and (currentLineWidth + charWidthKerned <= wrapLimit or charIndex == 1) then
-            -- Add it to the current line
+        if ((currentLineWidth + charWidthKerned <= wrapLimit) and (not shouldWrapNextIteration)) or (not charPrevious) then
             currentLineWidth = currentLineWidth + charWidthKerned
+
+            if char:isIdealWrapPoint() then idealLineEnd = charIndex end
+
+            charPrevious = char
+            shouldWrapNextIteration = char:isLineEnding()
+
+            charIndex = charIndex + 1
         else
-            -- Wrap and add it to the next line
-            currentLineWidth = charWidth -- kerning doesn't apply bc this is the first character of a line
+            local lastLineEnd = idealLineEnd or (charIndex-1)
 
-            -- Mark ending of current line and start of next line
-            lineIndices[#lineIndices+1] = charIndex-1
+            charIndex = lastLineEnd+1
+            charPrevious = nil
+            idealLineEnd = nil
+            shouldWrapNextIteration = false
+            currentLineWidth = 0
+
+            -- Mark ending of last line and start of next line
+            lineIndices[#lineIndices+1] = lastLineEnd
             lineIndices[#lineIndices+1] = charIndex
-
         end
-
-        charPrevious = char
-        mustWrapNextIteration = char:isLineEnding()
     end
 
     lineIndices[#lineIndices+1] = #chars
@@ -274,6 +285,20 @@ end
 ---@return boolean
 function EffectChar:isLineEnding()
     return self.str == "\n"
+end
+
+---@return boolean
+function EffectChar:isIdealWrapPoint()
+    local str = self.str
+    if str == " " then return true end
+    return false
+end
+
+---@return boolean
+function EffectChar:isInvisibleInWrap()
+    local str = self.str
+    if str == " " then return true end
+    return false
 end
 
 ---@param x number
