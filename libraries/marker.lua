@@ -149,15 +149,15 @@ end
 --- Lays out the characters in the text to the correct position.
 --- Called automatically by `MarkedText:generate()`.
 function MarkedText:layout()
-    local maxLineWidth, lineEndings = self:getWrap()
+    local lineWidths, lineIndices = self:getWrap()
     local chars = self.effectChars
 
     local nextX = 0
     local nextY = 0
 
-    for lineIndex = 1, #lineEndings do
-        local lineStartIndex = (lineEndings[lineIndex-1] or 0) + 1
-        local lineEndIndex = lineEndings[lineIndex]
+    for lineLookupIndex = 1, #lineIndices, 2 do
+        local lineStartIndex = lineIndices[lineLookupIndex]
+        local lineEndIndex = lineIndices[lineLookupIndex+1]
 
         local tallestCharHeight = 0
 
@@ -183,13 +183,13 @@ function MarkedText:layout()
     end
 end
 
----@return number maxLineWidth
----@return integer[] lineEndingIndices
+---@return number[] lineWidths The width of each line
+---@return integer[] lineIndices Alternating start and end indices of each line (line1start, line1end, line2start, line2end, ...)
 function MarkedText:getWrap()
     local chars = self.effectChars
 
-    local lineEndings = {}
-    local largestLineWidth = 0
+    local lineIndices = { 1 }
+    local lineWidths = {}
     local currentLineWidth = 0
 
     local wrapLimit = self.wrapLimit
@@ -203,27 +203,26 @@ function MarkedText:getWrap()
         local kerning = charPrevious and charPrevious:getKerning(char) or 0
         local charWidthKerned = charWidth + kerning
 
-        if (not mustWrapNextIteration) and (currentLineWidth + charWidthKerned <= wrapLimit) then
+        if (not mustWrapNextIteration) and (currentLineWidth + charWidthKerned <= wrapLimit or charIndex == 1) then
             -- Add it to the current line
             currentLineWidth = currentLineWidth + charWidthKerned
         else
             -- Wrap and add it to the next line
             currentLineWidth = charWidth -- kerning doesn't apply bc this is the first character of a line
 
-            if charIndex > 1 then
-                -- If the very first character didn't fit, first line ending would be 0, which is pointless
-                lineEndings[#lineEndings+1] = charIndex-1
-            end
+            -- Mark ending of current line and start of next line
+            lineIndices[#lineIndices+1] = charIndex-1
+            lineIndices[#lineIndices+1] = charIndex
+
         end
 
-        largestLineWidth = math.max(largestLineWidth, currentLineWidth)
-        mustWrapNextIteration = char:isLineEnding()
         charPrevious = char
+        mustWrapNextIteration = char:isLineEnding()
     end
 
-    lineEndings[#lineEndings+1] = #chars
+    lineIndices[#lineIndices+1] = #chars
 
-    return largestLineWidth, lineEndings
+    return lineWidths, lineIndices
 end
 
 -- EffectChar --------------------------------------------------------------------------------------
