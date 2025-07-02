@@ -191,7 +191,6 @@ function MarkedText:getWrap()
     local lineEndings = {}
     local largestLineWidth = 0
     local currentLineWidth = 0
-    local currentLineCharCount = 0
 
     local wrapLimit = self.wrapLimit
 
@@ -204,14 +203,17 @@ function MarkedText:getWrap()
         local kerning = charPrevious and charPrevious:getKerning(char) or 0
         local charWidthKerned = charWidth + kerning
 
-        if (not mustWrapNextIteration) and (currentLineWidth + charWidthKerned <= wrapLimit or currentLineCharCount == 0) then
-            currentLineCharCount = currentLineCharCount + 1
+        if (not mustWrapNextIteration) and (currentLineWidth + charWidthKerned <= wrapLimit) then
+            -- Add it to the current line
             currentLineWidth = currentLineWidth + charWidthKerned
         else
-            currentLineCharCount = 1
-            currentLineWidth = charWidth -- wrapped, kerning doesn't apply
+            -- Wrap and add it to the next line
+            currentLineWidth = charWidth -- kerning doesn't apply bc this is the first character of a line
 
-            lineEndings[#lineEndings+1] = charIndex-1
+            if charIndex > 1 then
+                -- If the very first character didn't fit, first line ending would be 0, which is pointless
+                lineEndings[#lineEndings+1] = charIndex-1
+            end
         end
 
         largestLineWidth = math.max(largestLineWidth, currentLineWidth)
