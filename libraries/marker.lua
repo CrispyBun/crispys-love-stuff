@@ -215,7 +215,7 @@ function MarkedText:getWrap()
 
             if char:isIdealWrapPoint() then
                 idealLineEnd = charIndex
-                lineWidthSinceLastWrapPoint = char:isInvisibleInWrap() and charWidthKerned or 0
+                lineWidthSinceLastWrapPoint = 0
             end
 
             charPrevious = char
@@ -230,6 +230,9 @@ function MarkedText:getWrap()
 
             local lastLineEndChar = chars[lastLineEnd]
             if lastLineEndChar:isInvisibleInWrap() and lineIndices[#lineIndices] < lastLineEnd then
+                local lastLineEndCharWidth = lastLineEndChar:getWidth() + chars[lastLineEnd-1]:getKerning(lastLineEndChar)
+                lastLineWidth = lastLineWidth - lastLineEndCharWidth
+
                 lastLineEndChar.disabled = true
                 lastLineEnd = lastLineEnd - 1
             end
