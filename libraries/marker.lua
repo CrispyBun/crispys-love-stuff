@@ -53,6 +53,7 @@ local MarkedTextMT = {__index = MarkedText}
 ---@field yPlacement number The Y coordinate of the char
 ---@field xOffset number Offset from the X coordinate (resets to 0 at the start of each update)
 ---@field yOffset number Offset from the Y coordinate (resets to 0 at the start of each update)
+---@field disabled boolean May be set to true when getting laid out by the MarkedText (won't render and should be ignored for most purposes)
 local EffectChar = {}
 local EffectChatMT = {__index = EffectChar}
 
@@ -220,6 +221,19 @@ function MarkedText:getWrap()
             local lastLineEnd = idealLineEnd or (charIndex-1)
 
             charIndex = lastLineEnd+1
+
+            local lastLineEndChar = chars[lastLineEnd]
+            if lastLineEndChar:isInvisibleInWrap() and lineIndices[#lineIndices] < lastLineEnd then
+                lastLineEndChar.disabled = true
+                lastLineEnd = lastLineEnd - 1
+            end
+
+            local nextLineStartChar = chars[charIndex]
+            if nextLineStartChar:isInvisibleInWrap() then
+                nextLineStartChar.disabled = true
+                charIndex = charIndex + 1
+            end
+
             charPrevious = nil
             idealLineEnd = nil
             shouldWrapNextIteration = false
@@ -232,6 +246,13 @@ function MarkedText:getWrap()
     end
 
     lineIndices[#lineIndices+1] = #chars
+
+    -- Edge case where the last line shouldn't exist at all
+    -- (line is trying to start after the last character of the string)
+    if lineIndices[#lineIndices-1] > lineIndices[#lineIndices] then
+        lineIndices[#lineIndices] = nil
+        lineIndices[#lineIndices] = nil
+    end
 
     return lineWidths, lineIndices
 end
@@ -253,6 +274,7 @@ function marker.newEffectChar(str, x, y, font)
         font = font or marker.getDefaultFont(),
         xOffset = 0,
         yOffset = 0,
+        disabled = false,
     }
     return setmetatable(effectChar, EffectChatMT)
 end
@@ -301,6 +323,11 @@ function EffectChar:isInvisibleInWrap()
     return false
 end
 
+---@return boolean
+function EffectChar:isDisabled()
+    return self.disabled
+end
+
 ---@param x number
 ---@param y number
 function EffectChar:setPlacement(x, y)
@@ -311,6 +338,8 @@ end
 ---@param x? number
 ---@param y? number
 function EffectChar:draw(x, y)
+    if self:isDisabled() then return end
+
     x = x or 0
     y = y or 0
 
