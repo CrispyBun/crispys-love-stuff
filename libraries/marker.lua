@@ -192,6 +192,7 @@ function MarkedText:getWrap()
     local lineIndices = { 1 }
     local lineWidths = {}
     local currentLineWidth = 0
+    local lineWidthSinceLastWrapPoint = 0
 
     local wrapLimit = self.wrapLimit
 
@@ -210,8 +211,12 @@ function MarkedText:getWrap()
 
         if ((currentLineWidth + charWidthKerned <= wrapLimit) and (not shouldWrapNextIteration)) or (not charPrevious) then
             currentLineWidth = currentLineWidth + charWidthKerned
+            lineWidthSinceLastWrapPoint = lineWidthSinceLastWrapPoint + charWidthKerned
 
-            if char:isIdealWrapPoint() then idealLineEnd = charIndex end
+            if char:isIdealWrapPoint() then
+                idealLineEnd = charIndex
+                lineWidthSinceLastWrapPoint = char:isInvisibleInWrap() and charWidthKerned or 0
+            end
 
             charPrevious = char
             shouldWrapNextIteration = char:isLineEnding()
@@ -219,8 +224,9 @@ function MarkedText:getWrap()
             charIndex = charIndex + 1
         else
             local lastLineEnd = idealLineEnd or (charIndex-1)
-
             charIndex = lastLineEnd+1
+
+            local lastLineWidth = currentLineWidth - (idealLineEnd and lineWidthSinceLastWrapPoint or 0)
 
             local lastLineEndChar = chars[lastLineEnd]
             if lastLineEndChar:isInvisibleInWrap() and lineIndices[#lineIndices] < lastLineEnd then
@@ -238,20 +244,24 @@ function MarkedText:getWrap()
             idealLineEnd = nil
             shouldWrapNextIteration = false
             currentLineWidth = 0
+            lineWidthSinceLastWrapPoint = 0
 
             -- Mark ending of last line and start of next line
             lineIndices[#lineIndices+1] = lastLineEnd
             lineIndices[#lineIndices+1] = charIndex
+            lineWidths[#lineWidths+1] = lastLineWidth
         end
     end
 
     lineIndices[#lineIndices+1] = #chars
+    lineWidths[#lineWidths+1] = currentLineWidth
 
     -- Edge case where the last line shouldn't exist at all
     -- (line is trying to start after the last character of the string)
     if lineIndices[#lineIndices-1] > lineIndices[#lineIndices] then
         lineIndices[#lineIndices] = nil
         lineIndices[#lineIndices] = nil
+        lineWidths[#lineWidths] = nil
     end
 
     return lineWidths, lineIndices
