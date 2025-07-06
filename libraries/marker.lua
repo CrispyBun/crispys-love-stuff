@@ -39,6 +39,8 @@ local marker = {}
 ---@field x number The X coordinate of the text
 ---@field y number The Y coordinate of the text
 ---@field wrapLimit number How wide the text is allowed to be before it must wrap
+---@field textAlign Marker.TextAlign The horizontal alignment of the text
+---@field alignBox [number, number] The reference textbox size ([x, y]) the text is aligned in
 ---@field font Marker.Font The font used to generate and render the text
 ---@field inputString string The string used to generate the text
 ---@field effectChars Marker.EffectChar[] The generated EffectChars
@@ -68,6 +70,14 @@ local AbstractFontMT = {__index = AbstractFont}
 local LoveFont = {}
 local LoveFontMT = {__index = LoveFont}
 
+---@alias Marker.TextAlign
+---| '"start"' # Aligns to the left
+---| '"center"' # Aligns to the center
+---| '"end"' # Aligns to the right
+---| '"middle"' # Same as "center"
+---| '"left"' # Same as "start"
+---| '"right"' # Same as "end"
+
 -- MarkedText ---------------------------------------------------------------------------------------
 
 --- Creates a new fancy MarkedText object
@@ -76,18 +86,23 @@ local LoveFontMT = {__index = LoveFont}
 ---@param x? number
 ---@param y? number
 ---@param wrapLimit? number
+---@param textAlign? Marker.TextAlign
 ---@return Marker.MarkedText
-function marker.newMarkedText(str, font, x, y, wrapLimit)
+function marker.newMarkedText(str, font, x, y, wrapLimit, textAlign)
     if type(font) == "userdata" then
         ---@diagnostic disable-next-line: param-type-mismatch
         font = marker.newWrappedLoveFont(font)
     end
+
+    local alignBoxWidth = (wrapLimit and wrapLimit ~= math.huge) and wrapLimit or 0
 
     -- new Marker.MarkedText
     local markedText = {
         x = x or 0,
         y = y or 0,
         wrapLimit = wrapLimit or math.huge,
+        textAlign = textAlign or "start",
+        alignBox = {alignBoxWidth, 0},
         font = font or marker.getDefaultFont(),
         inputString = str or "",
         effectChars = {}
@@ -113,7 +128,26 @@ function MarkedText:setWrapLimit(wrapLimit)
     self.wrapLimit = wrapLimit
 end
 
---- Regenerates the entire MarkedText, optionally using a different input string
+--- Sets the alignment of the text. The layout must be updated for this to take effect.
+---@param textAlign Marker.TextAlign
+function MarkedText:setAlign(textAlign)
+    self.textAlign = textAlign
+end
+
+--- Sets the reference textbox size the text is aligned in.
+--- If a wrapLimit was specified in the constructor, the alignBox
+--- width will have been set to the wrapLimit automatically.
+--- 
+--- The layout must be updated for this to take effect.
+---@param x number
+---@param y? number
+function MarkedText:setAlignBox(x, y)
+    self.alignBox[1] = x
+    self.alignBox[2] = y or 0
+end
+
+--- Regenerates the entire MarkedText, optionally using a different input string.
+--- If the input string is unchanged, it might be better to call `layout()` instead.
 ---@param str? string
 function MarkedText:generate(str)
     str = str or self.inputString
@@ -153,17 +187,26 @@ function MarkedText:layout()
     local lineWidths, lineIndices = self:getWrap()
     local chars = self.effectChars
 
+    local alignBoxX = self.alignBox[1]
+
+    local rowShiftFactor = 0
+    local textAlign = self.textAlign
+    if textAlign == "center" or textAlign == "middle" then rowShiftFactor = 0.5
+    elseif textAlign == "end" or textAlign == "right" then rowShiftFactor = 1 end
+
     local nextX = 0
     local nextY = 0
 
-    for lineLookupIndex = 1, #lineIndices, 2 do
-        local lineStartIndex = lineIndices[lineLookupIndex]
-        local lineEndIndex = lineIndices[lineLookupIndex+1]
+    for lineIndex = 1, #lineWidths do
+        local lineStartCharIndex = lineIndices[lineIndex*2-1]
+        local lineEndCharIndex = lineIndices[lineIndex*2]
 
         local tallestCharHeight = 0
 
+        nextX = nextX - rowShiftFactor * lineWidths[lineIndex] + rowShiftFactor * alignBoxX
+
         local charPrevious ---@type Marker.EffectChar?
-        for charIndex = lineStartIndex, lineEndIndex do
+        for charIndex = lineStartCharIndex, lineEndCharIndex do
             local char = chars[charIndex]
             local charWidth = char:getWidth()
             local charHeight = char:getHeight(true)
@@ -357,8 +400,10 @@ function EffectChar:draw(x, y)
     y = y or 0
 
     local str = self.str
-    local drawnX = x + self.xPlacement + self.xOffset
-    local drawnY = y + self.yPlacement + self.yOffset
+
+    local drawnX = math.floor(x + self.xPlacement + self.xOffset)
+    local drawnY = math.floor(y + self.yPlacement + self.yOffset)
+
     self.font:draw(str, drawnX, drawnY)
 end
 
