@@ -40,6 +40,7 @@ local marker = {}
 ---@field y number The Y coordinate of the text
 ---@field wrapLimit number How wide the text is allowed to be before it must wrap
 ---@field textAlign Marker.TextAlign The horizontal alignment of the text
+---@field verticalAlign Marker.VerticalAlign The vertical alignment of the text
 ---@field alignBox [number, number] The reference textbox size ([x, y]) the text is aligned in
 ---@field font Marker.Font The font used to generate and render the text
 ---@field inputString string The string used to generate the text
@@ -70,6 +71,11 @@ local AbstractFontMT = {__index = AbstractFont}
 local LoveFont = {}
 local LoveFontMT = {__index = LoveFont}
 
+---@class Marker.WrapInfo
+---@field lineIndices number[] Alternating start and end indices of each line (line1start, line1end, line2start, line2end, ...)
+---@field lineWidths number[] The width of each line
+---@field textHeight number The height of the whole text
+
 ---@alias Marker.TextAlign
 ---| '"start"' # Aligns to the left
 ---| '"center"' # Aligns to the center
@@ -77,6 +83,14 @@ local LoveFontMT = {__index = LoveFont}
 ---| '"middle"' # Same as "center"
 ---| '"left"' # Same as "start"
 ---| '"right"' # Same as "end"
+
+---@alias Marker.VerticalAlign
+---| '"start"' # Aligns to the top
+---| '"center"' # Aligns to the center
+---| '"end"' # Aligns to the bottom
+---| '"middle"' # Same as "center"
+---| '"top"' # Same as "start"
+---| '"bottom"' # Same as "end"
 
 -- MarkedText ---------------------------------------------------------------------------------------
 
@@ -102,6 +116,7 @@ function marker.newMarkedText(str, font, x, y, wrapLimit, textAlign)
         y = y or 0,
         wrapLimit = wrapLimit or math.huge,
         textAlign = textAlign or "start",
+        verticalAlign = "start",
         alignBox = {alignBoxWidth, 0},
         font = font or marker.getDefaultFont(),
         inputString = str or "",
@@ -130,8 +145,10 @@ end
 
 --- Sets the alignment of the text. The layout must be updated for this to take effect.
 ---@param textAlign Marker.TextAlign
-function MarkedText:setAlign(textAlign)
+---@param verticalAlign? Marker.VerticalAlign
+function MarkedText:setAlign(textAlign, verticalAlign)
     self.textAlign = textAlign
+    self.verticalAlign = verticalAlign or self.verticalAlign
 end
 
 --- Sets the reference textbox size the text is aligned in.
@@ -184,18 +201,30 @@ end
 --- Lays out the characters in the text to the correct position.
 --- Called automatically by `MarkedText:generate()`.
 function MarkedText:layout()
-    local lineWidths, lineIndices = self:getWrap()
+    local wrapInfo = self:getWrap()
     local chars = self.effectChars
 
+    local lineIndices = wrapInfo.lineIndices
+    local lineWidths = wrapInfo.lineWidths
+    local textHeight = wrapInfo.textHeight
+
     local alignBoxX = self.alignBox[1]
+    local alignBoxY = self.alignBox[2]
 
     local rowShiftFactor = 0
     local textAlign = self.textAlign
     if textAlign == "center" or textAlign == "middle" then rowShiftFactor = 0.5
     elseif textAlign == "end" or textAlign == "right" then rowShiftFactor = 1 end
 
+    local columnShiftFactor = 0
+    local verticalAlign = self.verticalAlign
+    if verticalAlign == "center" or verticalAlign == "middle" then columnShiftFactor = 0.5
+    elseif verticalAlign == "end" or verticalAlign == "bottom" then columnShiftFactor = 1 end
+
     local nextX = 0
     local nextY = 0
+
+    nextY = nextY - columnShiftFactor * textHeight + columnShiftFactor * alignBoxY
 
     for lineIndex = 1, #lineWidths do
         local lineStartCharIndex = lineIndices[lineIndex*2-1]
@@ -227,15 +256,17 @@ function MarkedText:layout()
     end
 end
 
----@return number[] lineWidths The width of each line
----@return integer[] lineIndices Alternating start and end indices of each line (line1start, line1end, line2start, line2end, ...)
+---@return Marker.WrapInfo
 function MarkedText:getWrap()
     local chars = self.effectChars
 
     local lineIndices = { 1 }
     local lineWidths = {}
+    local textHeight = 0
     local currentLineWidth = 0
     local lineWidthSinceLastWrapPoint = 0
+    local tallestLineChar = 0
+    local tallestPreWrapPointLineChar = 0
 
     local wrapLimit = self.wrapLimit
 
@@ -252,6 +283,8 @@ function MarkedText:getWrap()
         local kerning = charPrevious and charPrevious:getKerning(char) or 0
         local charWidthKerned = charWidth + kerning
 
+        local charHeight = char:getHeight(true)
+
         if ((currentLineWidth + charWidthKerned <= wrapLimit) and (not shouldWrapNextIteration)) or (not charPrevious) then
             currentLineWidth = currentLineWidth + charWidthKerned
             lineWidthSinceLastWrapPoint = lineWidthSinceLastWrapPoint + charWidthKerned
@@ -259,7 +292,10 @@ function MarkedText:getWrap()
             if char:isIdealWrapPoint() then
                 idealLineEnd = charIndex
                 lineWidthSinceLastWrapPoint = 0
+                tallestPreWrapPointLineChar = tallestLineChar -- this is for the previous char
             end
+
+            tallestLineChar = math.max(tallestLineChar, charHeight)
 
             charPrevious = char
             shouldWrapNextIteration = char:isLineEnding()
@@ -270,6 +306,7 @@ function MarkedText:getWrap()
             charIndex = lastLineEnd+1
 
             local lastLineWidth = currentLineWidth - (idealLineEnd and lineWidthSinceLastWrapPoint or 0)
+            local lastLineHeight = idealLineEnd and tallestPreWrapPointLineChar or tallestLineChar
 
             local lastLineEndChar = chars[lastLineEnd]
             if lastLineEndChar:isInvisibleInWrap() and lineIndices[#lineIndices] < lastLineEnd then
@@ -278,6 +315,8 @@ function MarkedText:getWrap()
 
                 lastLineEndChar.disabled = true
                 lastLineEnd = lastLineEnd - 1
+            else
+                lastLineHeight = math.max(lastLineHeight, lastLineEndChar:getHeight(true))
             end
 
             local nextLineStartChar = chars[charIndex]
@@ -286,11 +325,15 @@ function MarkedText:getWrap()
                 charIndex = charIndex + 1
             end
 
+            textHeight = textHeight + lastLineHeight
+
             charPrevious = nil
             idealLineEnd = nil
             shouldWrapNextIteration = false
             currentLineWidth = 0
             lineWidthSinceLastWrapPoint = 0
+            tallestLineChar = 0
+            tallestPreWrapPointLineChar = 0
 
             -- Mark ending of last line and start of next line
             lineIndices[#lineIndices+1] = lastLineEnd
@@ -301,6 +344,7 @@ function MarkedText:getWrap()
 
     lineIndices[#lineIndices+1] = #chars
     lineWidths[#lineWidths+1] = currentLineWidth
+    textHeight = textHeight + tallestLineChar
 
     -- Edge case where the last line shouldn't exist at all
     -- (line is trying to start after the last character of the string)
@@ -308,9 +352,17 @@ function MarkedText:getWrap()
         lineIndices[#lineIndices] = nil
         lineIndices[#lineIndices] = nil
         lineWidths[#lineWidths] = nil
+        textHeight = textHeight - tallestLineChar
     end
 
-    return lineWidths, lineIndices
+    ---@type Marker.WrapInfo
+    local out = {
+        lineIndices = lineIndices,
+        lineWidths = lineWidths,
+        textHeight = textHeight
+    }
+
+    return out
 end
 
 -- EffectChar --------------------------------------------------------------------------------------
