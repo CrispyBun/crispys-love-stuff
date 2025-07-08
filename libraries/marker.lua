@@ -45,6 +45,7 @@ local marker = {}
 ---@field font Marker.Font The font used to generate and render the text
 ---@field inputString string The string used to generate the text
 ---@field effectChars Marker.EffectChar[] The generated EffectChars
+---@field ignoreStretchOnLastLine boolean True by default, makes alignments like "justify" look much better on paragraph ending lines.
 local MarkedText = {}
 local MarkedTextMT = {__index = MarkedText}
 
@@ -85,6 +86,7 @@ local LoveFontMT = {__index = LoveFont}
 ---| '"left"' # Same as "start"
 ---| '"right"' # Same as "end"
 ---| '"justify"' # Spreads out the words in each line to span the entire alignBox width
+---| '"letterspace"' # Adjusts letter spacing in each line to span the entire alignBox width
 
 ---@alias Marker.VerticalAlign
 ---| '"start"' # Aligns to the top
@@ -122,7 +124,8 @@ function marker.newMarkedText(str, font, x, y, wrapLimit, textAlign)
         alignBox = {alignBoxWidth, 0},
         font = font or marker.getDefaultFont(),
         inputString = str or "",
-        effectChars = {}
+        effectChars = {},
+        ignoreStretchOnLastLine = true
     }
     setmetatable(markedText, MarkedTextMT)
 
@@ -235,13 +238,26 @@ function MarkedText:layout()
 
         local lineWidth = lineWidths[lineIndex]
         local spaceCount = spaceCounts[lineIndex]
+        local lastCharIsLineEnd = chars[lineEndCharIndex]:isLineEnding()
+
+        -- TODO: 0-width chars shouldn't count as letters.
+        -- a symbolCount should instead be counted in the getWrap method
+        -- like the spaces (and spaces should be excluded from the count there).
+        local letterCount = lineEndCharIndex - lineStartCharIndex + 1
 
         local horizontalWiggleRoom = alignBoxX - lineWidth
 
+        -- proper justify alignment should also adjust letter spacing to an extent,
+        -- as well as maybe have the ability to shrink spaces too, but the simple enough
+        -- space stretching approach is good enough for now.
         local spaceStretch = (textAlign == "justify" and spaceCount > 0) and (horizontalWiggleRoom / spaceCount) or 0
+        local letterStretch = (textAlign == "letterspace" and letterCount >= 2) and (horizontalWiggleRoom / (letterCount-1)) or 0
         spaceStretch = math.max(spaceStretch, 0)
-        if lineIndex == #lineWidths then spaceStretch = 0 end
-        if chars[lineEndCharIndex]:isLineEnding() then spaceStretch = 0 end
+
+        if self.ignoreStretchOnLastLine and (lineIndex == #lineWidths or lastCharIsLineEnd) then
+            spaceStretch = 0
+            letterStretch = 0
+        end
 
         local tallestCharHeight = 0
 
@@ -254,16 +270,23 @@ function MarkedText:layout()
             local charHeight = char:getHeight(true)
             local charIsSpace = char:isSpace()
 
-            local extraSpacing = charIsSpace and spaceStretch or 0
+            local extraSpacingLeft = 0
+            local extraSpacingRight = 0
+
+            extraSpacingLeft = extraSpacingLeft + (charIsSpace and spaceStretch or 0) / 2
+            extraSpacingRight = extraSpacingRight + (charIsSpace and spaceStretch or 0) / 2
+
+            extraSpacingLeft = extraSpacingLeft + ((charIndex == lineStartCharIndex) and (0) or (letterStretch/2))
+            extraSpacingRight = extraSpacingRight + ((charIndex == lineEndCharIndex) and (0) or (letterStretch/2))
 
             local kerning = charPrevious and charPrevious:getKerning(char) or 0
             nextX = nextX + kerning
-            nextX = nextX + extraSpacing / 2
+            nextX = nextX + extraSpacingLeft
 
             char:setPlacement(nextX, nextY)
 
             nextX = nextX + charWidth
-            nextX = nextX + extraSpacing / 2
+            nextX = nextX + extraSpacingRight
             tallestCharHeight = math.max(tallestCharHeight, charHeight)
 
             charPrevious = char
