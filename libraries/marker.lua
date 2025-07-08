@@ -290,7 +290,7 @@ function MarkedText:getWrap()
 
     local idealLineEnd ---@type integer?
     local charPrevious ---@type Marker.EffectChar?
-    local shouldWrapNextIteration = false
+    local shouldWrapOnNextChar = false
 
     local charIndex = 1
     local charsLength = #chars
@@ -304,7 +304,7 @@ function MarkedText:getWrap()
         local charHeight = char:getHeight(true)
         local charIsSpace = char:isSpace()
 
-        if ((currentLineWidth + charWidthKerned <= wrapLimit) and (not shouldWrapNextIteration)) or (not charPrevious) then
+        if ((currentLineWidth + charWidthKerned <= wrapLimit) and (not shouldWrapOnNextChar)) or (not charPrevious) then
             currentLineWidth = currentLineWidth + charWidthKerned
             lineWidthSinceLastWrapPoint = lineWidthSinceLastWrapPoint + charWidthKerned
 
@@ -323,10 +323,14 @@ function MarkedText:getWrap()
             tallestLineChar = math.max(tallestLineChar, charHeight)
 
             charPrevious = char
-            shouldWrapNextIteration = char:isLineEnding()
+            shouldWrapOnNextChar = char:isLineEnding()
 
             charIndex = charIndex + 1
         else
+            -- Wrap on current char instead of last idealLineEnd for these cases:
+            if shouldWrapOnNextChar then idealLineEnd = nil end
+            if char:isIdealWrapPoint() and char:isInvisibleInWrap() then idealLineEnd = nil end
+
             local lastLineEnd = idealLineEnd or (charIndex-1)
             charIndex = lastLineEnd+1
 
@@ -354,7 +358,7 @@ function MarkedText:getWrap()
 
             charPrevious = nil
             idealLineEnd = nil
-            shouldWrapNextIteration = false
+            shouldWrapOnNextChar = false
             currentLineWidth = 0
             lineWidthSinceLastWrapPoint = 0
             tallestLineChar = 0
