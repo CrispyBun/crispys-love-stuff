@@ -237,8 +237,11 @@ function MarkedText:layout()
         local spaceCount = spaceCounts[lineIndex]
 
         local horizontalWiggleRoom = alignBoxX - lineWidth
+
         local spaceStretch = (textAlign == "justify" and spaceCount > 0) and (horizontalWiggleRoom / spaceCount) or 0
+        spaceStretch = math.max(spaceStretch, 0)
         if lineIndex == #lineWidths then spaceStretch = 0 end
+        if chars[lineEndCharIndex]:isLineEnding() then spaceStretch = 0 end
 
         local tallestCharHeight = 0
 
