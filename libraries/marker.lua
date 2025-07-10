@@ -58,6 +58,7 @@ local MarkedTextMT = {__index = MarkedText}
 ---@field xOffset number Offset from the X coordinate (resets to 0 at the start of each update)
 ---@field yOffset number Offset from the Y coordinate (resets to 0 at the start of each update)
 ---@field disabled boolean May be set to true when getting laid out by the MarkedText (won't render and should be ignored for most purposes)
+---@field effects table<string, table<string, string?>> The effects applied to this char (the key is the effect name) and all the attributes set for them
 local EffectChar = {}
 local EffectChatMT = {__index = EffectChar}
 
@@ -95,6 +96,11 @@ local LoveFontMT = {__index = LoveFont}
 ---| '"middle"' # Same as "center"
 ---| '"top"' # Same as "start"
 ---| '"bottom"' # Same as "end"
+
+---@class Marker.Parser.TagStackEntry
+---@field name string
+---@field attributes table<string, string>
+---@field wasAppliedToChar boolean
 
 -- MarkedText ---------------------------------------------------------------------------------------
 
@@ -446,6 +452,7 @@ function marker.newEffectChar(str, x, y, font)
         xOffset = 0,
         yOffset = 0,
         disabled = false,
+        effects = {},
     }
     return setmetatable(effectChar, EffectChatMT)
 end
@@ -595,6 +602,7 @@ end
 ---@param rightChar string
 ---@return number
 function LoveFont:getKerning(leftChar, rightChar)
+    if leftChar == "" or rightChar == "" then return 0 end
     return self.font:getKerning(leftChar, rightChar)
 end
 
@@ -648,22 +656,50 @@ end
 ---@param effectChars Marker.EffectChar[]
 ---@return Marker.EffectChar[]
 function marker.parser.parse(effectChars)
-    return marker.parser.parse_text(effectChars, 1, {})
+    return marker.parser.parse_text(effectChars, 1, {}, {})
+end
+
+---@param effectChar Marker.EffectChar
+---@param tagStack Marker.Parser.TagStackEntry[]
+local function applyTagStackToEffectChar(effectChar, tagStack)
+    for tagIndex = 1, #tagStack do
+        local tag = tagStack[tagIndex]
+        local tagName = tag.name
+        local tagAttributes = tag.attributes
+        local copiedAttributes = effectChar.effects[tagName] or {}
+        for attributeName, attributeValue in pairs(tagAttributes) do
+            copiedAttributes[attributeName] = attributeValue
+        end
+        effectChar.effects[tagName] = copiedAttributes
+        tag.wasAppliedToChar = true
+    end
+end
+
+---@param effectChars Marker.EffectChar[]
+---@param effectCharsNew Marker.EffectChar[]
+---@param tagStack Marker.Parser.TagStackEntry[]
+local function appendFillerCharToCharOutput(effectChars, effectCharsNew, tagStack)
+    if not effectChars[1] then error("effectChars can't be empty") end
+    local fillerChar = marker.newEffectChar("", 0, 0, effectChars[1].font)
+    applyTagStackToEffectChar(fillerChar, tagStack)
+    effectCharsNew[#effectCharsNew+1] = fillerChar
 end
 
 ---@param effectChars Marker.EffectChar[]
 ---@param i integer
 ---@param effectCharsNew Marker.EffectChar[]
+---@param tagStack Marker.Parser.TagStackEntry[]
 ---@return Marker.EffectChar[]
-function marker.parser.parse_text(effectChars, i, effectCharsNew)
+function marker.parser.parse_text(effectChars, i, effectCharsNew, tagStack)
     while i <= #effectChars do
         local char = effectChars[i]
         local charStr = char.str
 
         if charStr == "<" then
-            return marker.parser.parse_potentialTagStart(effectChars, i, effectCharsNew)
+            return marker.parser.parse_potentialTagStart(effectChars, i, effectCharsNew, tagStack)
         end
 
+        applyTagStackToEffectChar(char, tagStack)
         effectCharsNew[#effectCharsNew+1] = char
 
         i = i + 1
@@ -674,8 +710,9 @@ end
 ---@param effectChars Marker.EffectChar[]
 ---@param i integer
 ---@param effectCharsNew Marker.EffectChar[]
+---@param tagStack Marker.Parser.TagStackEntry[]
 ---@return Marker.EffectChar[]
-function marker.parser.parse_potentialTagStart(effectChars, i, effectCharsNew)
+function marker.parser.parse_potentialTagStart(effectChars, i, effectCharsNew, tagStack)
     if effectChars[i].str ~= "<" then error("Invalid tag opener") end
 
     if i >= #effectChars then
@@ -687,15 +724,16 @@ function marker.parser.parse_potentialTagStart(effectChars, i, effectCharsNew)
 
     local tagStart = effectChars[i].str
     if marker.parser.allowedTagStartChars[tagStart] then
-        return marker.parser.parse_tag(effectChars, i, effectCharsNew)
+        return marker.parser.parse_tag(effectChars, i, effectCharsNew, tagStack)
     end
     if tagStart == "/" then
-        return marker.parser.parse_closingTag(effectChars, i, effectCharsNew)
+        return marker.parser.parse_closingTag(effectChars, i, effectCharsNew, tagStack)
     end
 
-    -- Not a valid tag
+    -- Not a tag, false alarm
+    applyTagStackToEffectChar(effectChars[i-1], tagStack)
     effectCharsNew[#effectCharsNew+1] = effectChars[i-1]
-    return marker.parser.parse_text(effectChars, i, effectCharsNew)
+    return marker.parser.parse_text(effectChars, i, effectCharsNew, tagStack)
 end
 
 ---@param effectChars Marker.EffectChar[]
@@ -813,26 +851,47 @@ end
 ---@param effectChars Marker.EffectChar[]
 ---@param i integer
 ---@param effectCharsNew Marker.EffectChar[]
+---@param tagStack Marker.Parser.TagStackEntry[]
 ---@return Marker.EffectChar[]
-function marker.parser.parse_tag(effectChars, i, effectCharsNew)
+function marker.parser.parse_tag(effectChars, i, effectCharsNew, tagStack)
     if not marker.parser.allowedTagStartChars[effectChars[i].str] then error("Invalid tag start") end
 
     local tagName, tagAttributes, tagIsSelfClosing
     i, tagName = parseTagNameOrAttributeName(effectChars, i)
     i, tagAttributes, tagIsSelfClosing = parseTagBody(effectChars, i)
 
-    return marker.parser.parse_text(effectChars, i, effectCharsNew)
+    tagStack[#tagStack+1] = {
+        name = tagName,
+        attributes = tagAttributes,
+        wasAppliedToChar = false
+    }
+
+    if tagIsSelfClosing then
+        appendFillerCharToCharOutput(effectChars, effectCharsNew, tagStack)
+        tagStack[#tagStack] = nil
+    end
+
+    return marker.parser.parse_text(effectChars, i, effectCharsNew, tagStack)
 end
 
 ---@param effectChars Marker.EffectChar[]
 ---@param i integer
 ---@param effectCharsNew Marker.EffectChar[]
+---@param tagStack Marker.Parser.TagStackEntry[]
 ---@return Marker.EffectChar[]
-function marker.parser.parse_closingTag(effectChars, i, effectCharsNew)
+function marker.parser.parse_closingTag(effectChars, i, effectCharsNew, tagStack)
     if effectChars[i].str ~= "/" then error("Invalid closing tag start") end
 
     local tagName
     i, tagName = parseTagNameOrAttributeName(effectChars, i+1)
+
+    local tagStackTop = tagStack[#tagStack]
+    if tagStackTop and tagStackTop.name == tagName then
+        if not tagStackTop.wasAppliedToChar then
+            appendFillerCharToCharOutput(effectChars, effectCharsNew, tagStack)
+        end
+        tagStack[#tagStack] = nil
+    end
 
     while true do
         local char = effectChars[i]
@@ -847,7 +906,7 @@ function marker.parser.parse_closingTag(effectChars, i, effectCharsNew)
         i = i + 1
     end
 
-    return marker.parser.parse_text(effectChars, i, effectCharsNew)
+    return marker.parser.parse_text(effectChars, i, effectCharsNew, tagStack)
 end
 
 return marker
