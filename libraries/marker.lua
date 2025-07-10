@@ -176,7 +176,6 @@ function MarkedText:generate(str)
     self.inputString = str
 
     local effectChars = {}
-    self.effectChars = effectChars
 
     local font = self.font
 
@@ -186,6 +185,8 @@ function MarkedText:generate(str)
         local effectChar = marker.newEffectChar(charStr, 0, 0, font)
         effectChars[#effectChars+1] = effectChar
     end
+
+    self.effectChars = marker.parser.parse(effectChars)
 
     self:layout()
 end
@@ -602,6 +603,251 @@ end
 ---@param y number
 function LoveFont:draw(str, x, y)
     love.graphics.print(str, self.font, x, y)
+end
+
+-- Parser ------------------------------------------------------------------------------------------
+
+marker.parser = {}
+
+marker.parser.allowedTagStartChars = {
+    A = true, B = true, C = true, D = true,
+    E = true, F = true, G = true, H = true,
+    I = true, J = true, K = true, L = true,
+    M = true, N = true, O = true, P = true,
+    Q = true, R = true, S = true, T = true,
+    U = true, V = true, W = true, X = true,
+    Y = true, Z = true, a = true, b = true,
+    c = true, d = true, e = true, f = true,
+    g = true, h = true, i = true, j = true,
+    k = true, l = true, m = true, n = true,
+    o = true, p = true, q = true, r = true,
+    s = true, t = true, u = true, v = true,
+    w = true, x = true, y = true, z = true,
+    ["_"] = true
+}
+
+marker.parser.allowedTagChars = {
+    ["0"] = true,
+    ["1"] = true,
+    ["2"] = true,
+    ["3"] = true,
+    ["4"] = true,
+    ["5"] = true,
+    ["6"] = true,
+    ["7"] = true,
+    ["8"] = true,
+    ["9"] = true,
+    ["-"] = true,
+    ["."] = true,
+}
+for key, value in pairs(marker.parser.allowedTagStartChars) do
+    marker.parser.allowedTagChars[key] = marker.parser.allowedTagChars[key] or value
+end
+
+--- Parses and processes all tags in the given sequence of EffectChars
+---@param effectChars Marker.EffectChar[]
+---@return Marker.EffectChar[]
+function marker.parser.parse(effectChars)
+    return marker.parser.parse_text(effectChars, 1, {})
+end
+
+---@param effectChars Marker.EffectChar[]
+---@param i integer
+---@param effectCharsNew Marker.EffectChar[]
+---@return Marker.EffectChar[]
+function marker.parser.parse_text(effectChars, i, effectCharsNew)
+    while i <= #effectChars do
+        local char = effectChars[i]
+        local charStr = char.str
+
+        if charStr == "<" then
+            return marker.parser.parse_potentialTagStart(effectChars, i, effectCharsNew)
+        end
+
+        effectCharsNew[#effectCharsNew+1] = char
+
+        i = i + 1
+    end
+    return effectCharsNew
+end
+
+---@param effectChars Marker.EffectChar[]
+---@param i integer
+---@param effectCharsNew Marker.EffectChar[]
+---@return Marker.EffectChar[]
+function marker.parser.parse_potentialTagStart(effectChars, i, effectCharsNew)
+    if effectChars[i].str ~= "<" then error("Invalid tag opener") end
+
+    if i >= #effectChars then
+        effectCharsNew[#effectCharsNew+1] = effectChars[i]
+        return effectCharsNew
+    end
+
+    i = i + 1
+
+    local tagStart = effectChars[i].str
+    if marker.parser.allowedTagStartChars[tagStart] then
+        return marker.parser.parse_tag(effectChars, i, effectCharsNew)
+    end
+    if tagStart == "/" then
+        return marker.parser.parse_closingTag(effectChars, i, effectCharsNew)
+    end
+
+    -- Not a valid tag
+    effectCharsNew[#effectCharsNew+1] = effectChars[i-1]
+    return marker.parser.parse_text(effectChars, i, effectCharsNew)
+end
+
+---@param effectChars Marker.EffectChar[]
+---@param i integer
+---@return integer i
+---@return string name
+local function parseTagNameOrAttributeName(effectChars, i)
+    local name = ""
+    while true do
+        local char = effectChars[i]
+        if not char then break end
+
+        local charStr = char.str
+        if not marker.parser.allowedTagChars[charStr] then break end
+
+        name = name .. charStr
+        i = i + 1
+    end
+    return i, name
+end
+
+---@param effectChars Marker.EffectChar[]
+---@param i integer
+---@return integer i
+---@return string value
+local function parseTagAttributeValue(effectChars, i)
+    if i > #effectChars then return i, "" end
+
+    local quoteChar = effectChars[i].str
+    if not (quoteChar == "'" or quoteChar == '"') then return i, "" end
+
+    i = i + 1
+
+    local value = ""
+    while true do
+        local char = effectChars[i]
+        if not char then break end
+
+        local charStr = char.str
+        if charStr == quoteChar then break end
+
+        value = value .. charStr
+        i = i + 1
+    end
+
+    return i, value
+end
+
+---@param effectChars Marker.EffectChar[]
+---@param i integer
+---@return integer i
+---@return string attributeName
+---@return string attributeValue
+local function parseTagAttribute(effectChars, i)
+    local attributeName
+    i, attributeName = parseTagNameOrAttributeName(effectChars, i)
+
+    local equalsFound = false
+    while true do
+        local char = effectChars[i]
+        if not char then break end
+
+        local charStr = char.str
+
+        if marker.parser.allowedTagStartChars[charStr] then break end
+        if charStr == "/" or charStr == ">" then break end
+        if charStr == "=" then equalsFound = true end
+
+        if equalsFound and (charStr == "'" or charStr == '"') then
+            local attributeValue
+            i, attributeValue = parseTagAttributeValue(effectChars, i)
+
+            return i, attributeName, attributeValue
+        end
+
+        i = i + 1
+    end
+
+    return i, attributeName, ""
+end
+
+---@param effectChars Marker.EffectChar[]
+---@param i integer
+---@return integer i
+---@return table<string, string> attributes
+---@return boolean isSelfClosing
+local function parseTagBody(effectChars, i)
+    local attributes = {}
+    local isSelfClosing = false
+    while true do
+        local char = effectChars[i]
+        if not char then break end
+
+        local charStr = char.str
+
+        if charStr == "/" then isSelfClosing = true end
+        if charStr == ">" then
+            i = i + 1
+            break
+        end
+
+        if marker.parser.allowedTagStartChars[charStr] then
+            isSelfClosing = false
+
+            local attributeName, attributeValue
+            i, attributeName, attributeValue = parseTagAttribute(effectChars, i)
+            attributes[attributeName] = attributeValue
+        else
+            i = i + 1
+        end
+    end
+    return i, attributes, isSelfClosing
+end
+
+---@param effectChars Marker.EffectChar[]
+---@param i integer
+---@param effectCharsNew Marker.EffectChar[]
+---@return Marker.EffectChar[]
+function marker.parser.parse_tag(effectChars, i, effectCharsNew)
+    if not marker.parser.allowedTagStartChars[effectChars[i].str] then error("Invalid tag start") end
+
+    local tagName, tagAttributes, tagIsSelfClosing
+    i, tagName = parseTagNameOrAttributeName(effectChars, i)
+    i, tagAttributes, tagIsSelfClosing = parseTagBody(effectChars, i)
+
+    return marker.parser.parse_text(effectChars, i, effectCharsNew)
+end
+
+---@param effectChars Marker.EffectChar[]
+---@param i integer
+---@param effectCharsNew Marker.EffectChar[]
+---@return Marker.EffectChar[]
+function marker.parser.parse_closingTag(effectChars, i, effectCharsNew)
+    if effectChars[i].str ~= "/" then error("Invalid closing tag start") end
+
+    local tagName
+    i, tagName = parseTagNameOrAttributeName(effectChars, i+1)
+
+    while true do
+        local char = effectChars[i]
+        if not char then break end
+
+        local charStr = char.str
+        if charStr == ">" then
+            i = i + 1
+            break
+        end
+
+        i = i + 1
+    end
+
+    return marker.parser.parse_text(effectChars, i, effectCharsNew)
 end
 
 return marker
