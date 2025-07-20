@@ -675,12 +675,13 @@ local function applyTagStackToEffectChar(effectChar, tagStack)
     end
 end
 
+---@param charStr string
 ---@param effectChars Marker.EffectChar[]
 ---@param effectCharsNew Marker.EffectChar[]
 ---@param tagStack Marker.Parser.TagStackEntry[]
-local function appendFillerCharToCharOutput(effectChars, effectCharsNew, tagStack)
+local function appendNewCharToCharOutput(charStr, effectChars, effectCharsNew, tagStack)
     if not effectChars[1] then error("effectChars can't be empty") end
-    local fillerChar = marker.newEffectChar("", 0, 0, effectChars[1].font)
+    local fillerChar = marker.newEffectChar(charStr, 0, 0, effectChars[1].font)
     applyTagStackToEffectChar(fillerChar, tagStack)
     effectCharsNew[#effectCharsNew+1] = fillerChar
 end
@@ -699,12 +700,80 @@ function marker.parser.parse_text(effectChars, i, effectCharsNew, tagStack)
             return marker.parser.parse_potentialTagStart(effectChars, i, effectCharsNew, tagStack)
         end
 
+        if charStr == "&" then
+            return marker.parser.parse_potentialCharacterEntity(effectChars, i, effectCharsNew, tagStack)
+        end
+
         applyTagStackToEffectChar(char, tagStack)
         effectCharsNew[#effectCharsNew+1] = char
 
         i = i + 1
     end
     return effectCharsNew
+end
+
+local definedCharacterEntities = {
+    amp = "&",
+    lt = "<",
+    gt = ">",
+    apos = "'",
+    quot = '"',
+}
+
+---@param effectChars Marker.EffectChar[]
+---@param i integer
+---@return integer i
+---@return string? parsedEntity
+local function parsePotentialCharacterEntity(effectChars, i)
+    if i > #effectChars then return i end
+    if effectChars[i].str ~= "&" then return i end
+
+    local j = i + 1
+    local entityCode = ""
+    local formatIsValid = true
+    while true do
+        local char = effectChars[j]
+        if not char then
+            formatIsValid = false
+            break
+        end
+
+        local charStr = char.str
+        if charStr == " " or charStr == "\n" then
+            formatIsValid = false
+            break
+        end
+
+        if charStr == ";" then break end
+        entityCode = entityCode .. charStr
+        j = j + 1
+    end
+
+    if formatIsValid and definedCharacterEntities[entityCode] then
+        return j+1, definedCharacterEntities[entityCode]
+    end
+
+    return i
+end
+
+---@param effectChars Marker.EffectChar[]
+---@param i integer
+---@param effectCharsNew Marker.EffectChar[]
+---@param tagStack Marker.Parser.TagStackEntry[]
+---@return Marker.EffectChar[]
+function marker.parser.parse_potentialCharacterEntity(effectChars, i, effectCharsNew, tagStack)
+    local parsedEntity
+    i, parsedEntity = parsePotentialCharacterEntity(effectChars, i)
+
+    if parsedEntity then
+        appendNewCharToCharOutput(parsedEntity, effectChars, effectCharsNew, tagStack)
+        return marker.parser.parse_text(effectChars, i, effectCharsNew, tagStack)
+    end
+
+    -- Not a valid character entity, ignore it
+    applyTagStackToEffectChar(effectChars[i], tagStack)
+    effectCharsNew[#effectCharsNew+1] = effectChars[i]
+    return marker.parser.parse_text(effectChars, i+1, effectCharsNew, tagStack)
 end
 
 ---@param effectChars Marker.EffectChar[]
@@ -769,14 +838,27 @@ local function parseTagAttributeValue(effectChars, i)
 
     local value = ""
     while true do
+        local foundReplacementChar = false
+
         local char = effectChars[i]
         if not char then break end
 
         local charStr = char.str
         if charStr == quoteChar then break end
 
-        value = value .. charStr
-        i = i + 1
+        if charStr == "&" then
+            local parsedEntity
+            i, parsedEntity = parsePotentialCharacterEntity(effectChars, i)
+            if parsedEntity then
+                value = value .. parsedEntity
+                foundReplacementChar = true
+            end
+        end
+
+        if not foundReplacementChar then
+            value = value .. charStr
+            i = i + 1
+        end
     end
 
     return i, value
@@ -867,7 +949,7 @@ function marker.parser.parse_tag(effectChars, i, effectCharsNew, tagStack)
     }
 
     if tagIsSelfClosing then
-        appendFillerCharToCharOutput(effectChars, effectCharsNew, tagStack)
+        appendNewCharToCharOutput("", effectChars, effectCharsNew, tagStack)
         tagStack[#tagStack] = nil
     end
 
@@ -888,7 +970,7 @@ function marker.parser.parse_closingTag(effectChars, i, effectCharsNew, tagStack
     local tagStackTop = tagStack[#tagStack]
     if tagStackTop and tagStackTop.name == tagName then
         if not tagStackTop.wasAppliedToChar then
-            appendFillerCharToCharOutput(effectChars, effectCharsNew, tagStack)
+            appendNewCharToCharOutput("", effectChars, effectCharsNew, tagStack)
         end
         tagStack[#tagStack] = nil
     end
