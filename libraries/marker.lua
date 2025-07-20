@@ -78,6 +78,7 @@ local LoveFontMT = {__index = LoveFont}
 ---@field lineWidths number[] The width of each line
 ---@field textHeight number The height of the whole text
 ---@field spaceCounts number[] The amount of space chars in each line
+---@field symbolCounts number[] The amount of renderable non-special symbols in each line
 
 ---@alias Marker.TextAlign
 ---| '"start"' # Aligns to the left
@@ -220,6 +221,7 @@ function MarkedText:layout()
     local lineWidths = wrapInfo.lineWidths
     local textHeight = wrapInfo.textHeight
     local spaceCounts = wrapInfo.spaceCounts
+    local symbolCounts = wrapInfo.symbolCounts
 
     local alignBoxX = self.alignBox[1]
     local alignBoxY = self.alignBox[2]
@@ -245,12 +247,8 @@ function MarkedText:layout()
 
         local lineWidth = lineWidths[lineIndex]
         local spaceCount = spaceCounts[lineIndex]
+        local symbolCount = symbolCounts[lineIndex]
         local lastCharIsLineEnd = chars[lineEndCharIndex]:isLineEnding()
-
-        -- TODO: 0-width chars shouldn't count as letters.
-        -- a symbolCount should instead be counted in the getWrap method
-        -- like the spaces (and spaces should be excluded from the count there).
-        local letterCount = lineEndCharIndex - lineStartCharIndex + 1
 
         local horizontalWiggleRoom = alignBoxX - lineWidth
 
@@ -258,15 +256,17 @@ function MarkedText:layout()
         -- as well as maybe have the ability to shrink spaces too, but the simple enough
         -- space stretching approach is good enough for now.
         local spaceStretch = (textAlign == "justify" and spaceCount > 0) and (horizontalWiggleRoom / spaceCount) or 0
-        local letterStretch = (textAlign == "letterspace" and letterCount >= 2) and (horizontalWiggleRoom / (letterCount-1)) or 0
+        local symbolStretch = (textAlign == "letterspace" and symbolCount >= 2) and (horizontalWiggleRoom / (symbolCount-1)) or 0
         spaceStretch = math.max(spaceStretch, 0)
 
         if self.ignoreStretchOnLastLine and (lineIndex == #lineWidths or lastCharIsLineEnd) then
             spaceStretch = 0
-            letterStretch = 0
+            symbolCount = 0
         end
 
         local tallestCharHeight = 0
+
+        local seenSymbols = 0
 
         nextX = nextX - rowShiftFactor * lineWidth + rowShiftFactor * alignBoxX
 
@@ -276,15 +276,21 @@ function MarkedText:layout()
             local charWidth = char:getWidth()
             local charHeight = char:getHeight(true)
             local charIsSpace = char:isSpace()
+            local charIsSymbol = char:isSymbol()
 
             local extraSpacingLeft = 0
             local extraSpacingRight = 0
 
-            extraSpacingLeft = extraSpacingLeft + (charIsSpace and spaceStretch or 0) / 2
-            extraSpacingRight = extraSpacingRight + (charIsSpace and spaceStretch or 0) / 2
+            if charIsSpace then
+                extraSpacingLeft = extraSpacingLeft + spaceStretch / 2
+                extraSpacingRight = extraSpacingRight + spaceStretch / 2
+            end
 
-            extraSpacingLeft = extraSpacingLeft + ((charIndex == lineStartCharIndex) and (0) or (letterStretch/2))
-            extraSpacingRight = extraSpacingRight + ((charIndex == lineEndCharIndex) and (0) or (letterStretch/2))
+            if charIsSymbol then
+                seenSymbols = seenSymbols + 1
+                extraSpacingLeft = extraSpacingLeft + ((seenSymbols == 1) and (0) or (symbolStretch/2))
+                extraSpacingRight = extraSpacingRight + ((seenSymbols == symbolCount) and (0) or (symbolStretch/2))
+            end
 
             local kerning = charPrevious and charPrevious:getKerning(char) or 0
             nextX = nextX + kerning
@@ -306,18 +312,23 @@ end
 
 ---@return Marker.WrapInfo
 function MarkedText:getWrap()
+    -- the eldritch function (close your eyes please)
+
     local chars = self.effectChars
 
     local lineIndices = { 1 }
     local lineWidths = {}
     local spaceCounts = {}
+    local symbolCounts = {}
     local textHeight = 0
     local currentLineWidth = 0
     local lineWidthSinceLastWrapPoint = 0
     local tallestLineChar = 0
     local tallestPreWrapPointLineChar = 0
     local currentSpaceCount = 0
+    local currentSymbolCount = 0
     local lineSpaceCountSinceLastWrapPoint = 0
+    local lineSymbolCountSinceLastWrapPoint = 0
 
     local wrapLimit = self.wrapLimit
 
@@ -336,6 +347,9 @@ function MarkedText:getWrap()
 
         local charHeight = char:getHeight(true)
         local charIsSpace = char:isSpace()
+        local charIsSymbol = char:isSymbol()
+
+        char.disabled = false -- reset from possible previous getWrap call
 
         if ((currentLineWidth + charWidthKerned <= wrapLimit) and (not shouldWrapOnNextChar)) or (not charPrevious) then
             currentLineWidth = currentLineWidth + charWidthKerned
@@ -346,10 +360,16 @@ function MarkedText:getWrap()
                 lineSpaceCountSinceLastWrapPoint = lineSpaceCountSinceLastWrapPoint + 1
             end
 
+            if charIsSymbol then
+                currentSymbolCount = currentSymbolCount + 1
+                lineSymbolCountSinceLastWrapPoint = lineSymbolCountSinceLastWrapPoint + 1
+            end
+
             if char:isIdealWrapPoint() then
                 idealLineEnd = charIndex
                 lineWidthSinceLastWrapPoint = 0
                 lineSpaceCountSinceLastWrapPoint = 0
+                lineSymbolCountSinceLastWrapPoint = 0
                 tallestPreWrapPointLineChar = tallestLineChar -- this is for the previous char
             end
 
@@ -370,12 +390,14 @@ function MarkedText:getWrap()
             local lastLineWidth = currentLineWidth - (idealLineEnd and lineWidthSinceLastWrapPoint or 0)
             local lastLineHeight = idealLineEnd and tallestPreWrapPointLineChar or tallestLineChar
             local lastLineSpaceCount = currentSpaceCount - (idealLineEnd and lineSpaceCountSinceLastWrapPoint or 0)
+            local lastLineSymbolCount = currentSymbolCount - (idealLineEnd and lineSymbolCountSinceLastWrapPoint or 0)
 
             local lastLineEndChar = chars[lastLineEnd]
             if lastLineEndChar:isInvisibleInWrap() and lineIndices[#lineIndices] < lastLineEnd then
                 local lastLineEndCharWidth = lastLineEndChar:getWidth() + chars[lastLineEnd-1]:getKerning(lastLineEndChar)
                 lastLineWidth = lastLineWidth - lastLineEndCharWidth
                 lastLineSpaceCount = lastLineSpaceCount - (lastLineEndChar:isSpace() and 1 or 0)
+                lastLineSymbolCount = lastLineSymbolCount - (lastLineEndChar:isSymbol() and 1 or 0)
 
                 lastLineEndChar.disabled = true
                 lastLineEnd = lastLineEnd - 1
@@ -398,12 +420,15 @@ function MarkedText:getWrap()
             tallestPreWrapPointLineChar = 0
             currentSpaceCount = 0
             lineSpaceCountSinceLastWrapPoint = 0
+            currentSymbolCount = 0
+            lineSymbolCountSinceLastWrapPoint = 0
 
             -- Mark ending of last line and start of next line
             lineIndices[#lineIndices+1] = lastLineEnd
             lineIndices[#lineIndices+1] = charIndex
             lineWidths[#lineWidths+1] = lastLineWidth
             spaceCounts[#spaceCounts+1] = lastLineSpaceCount
+            symbolCounts[#symbolCounts+1] = lastLineSymbolCount
             textHeight = textHeight + lastLineHeight
         end
     end
@@ -411,6 +436,7 @@ function MarkedText:getWrap()
     lineIndices[#lineIndices+1] = #chars
     lineWidths[#lineWidths+1] = currentLineWidth
     spaceCounts[#spaceCounts+1] = currentSpaceCount
+    symbolCounts[#symbolCounts+1] = currentSymbolCount
     textHeight = textHeight + tallestLineChar
 
     -- Edge case where the last line shouldn't exist at all
@@ -420,6 +446,7 @@ function MarkedText:getWrap()
         lineIndices[#lineIndices] = nil
         lineWidths[#lineWidths] = nil
         spaceCounts[#spaceCounts] = nil
+        symbolCounts[#symbolCounts] = nil
         textHeight = textHeight - tallestLineChar
     end
 
@@ -428,7 +455,8 @@ function MarkedText:getWrap()
         lineIndices = lineIndices,
         lineWidths = lineWidths,
         textHeight = textHeight,
-        spaceCounts = spaceCounts
+        spaceCounts = spaceCounts,
+        symbolCounts = symbolCounts
     }
 
     return out
@@ -487,10 +515,27 @@ function EffectChar:isLineEnding()
     return self.str == "\n"
 end
 
+---@return boolean
 function EffectChar:isSpace()
     local str = self.str
     if str == " " then return true end -- just a regular space for now, will add nbsp and whatnot if it becomes necessary
     return false
+end
+
+--- Returns `true` if the character is (probably) a regular renderable character.
+--- Returns `false` if it's an empty string or a common control character.
+---@return boolean
+function EffectChar:isSymbol()
+    local str = self.str
+    if str == "" then return false end
+    if str == "\a" then return false end
+    if str == "\b" then return false end
+    if str == "\t" then return false end
+    if str == "\n" then return false end
+    if str == "\v" then return false end
+    if str == "\f" then return false end
+    if str == "\r" then return false end
+    return true
 end
 
 ---@return boolean
