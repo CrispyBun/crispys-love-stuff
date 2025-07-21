@@ -62,6 +62,13 @@ local MarkedTextMT = {__index = MarkedText}
 local EffectChar = {}
 local EffectChatMT = {__index = EffectChar}
 
+---@class Marker.Effect
+---@field charFn? fun(char: Marker.EffectChar, attributes: table<string, string?>)
+---@field stringFn? nil TODO: Gets a "view" of chars in the text it "owns", the view has methods for changing the text (and inserting different effectChars)
+---@field textFn? nil TODO: Gets the entire MarkedText
+local Effect = {}
+local EffectMT = {__index = Effect}
+
 --- An abstract font class for drawing characters in some way
 ---@class Marker.Font
 local AbstractFont = {}
@@ -103,7 +110,7 @@ local LoveFontMT = {__index = LoveFont}
 ---@field attributes table<string, string>
 ---@field wasAppliedToChar boolean
 
--- MarkedText ---------------------------------------------------------------------------------------
+-- MarkedText --------------------------------------------------------------------------------------
 
 --- Creates a new fancy MarkedText object
 ---@param str? string
@@ -195,6 +202,7 @@ function MarkedText:generate(str)
 
     self.effectChars = marker.parser.parse(effectChars)
 
+    self:processEffects()
     self:layout()
 end
 
@@ -307,6 +315,23 @@ function MarkedText:layout()
 
         nextX = 0
         nextY = nextY + tallestCharHeight
+    end
+end
+
+--- Calls and applies all the effects attached to the chars in the text.
+--- Used internally.
+function MarkedText:processEffects()
+    local chars = self.effectChars
+
+    for charIndex = 1, #chars do
+        local char = chars[charIndex]
+
+        for effectName, effectAttributes in pairs(char.effects) do
+            local effect = marker.registeredEffects[effectName]
+            if effect then
+                effect.charFn(char, effectAttributes)
+            end
+        end
     end
 end
 
@@ -578,6 +603,38 @@ function EffectChar:draw(x, y)
     local drawnY = math.floor(y + self.yPlacement + self.yOffset)
 
     self.font:draw(str, drawnX, drawnY)
+end
+
+-- Effects -----------------------------------------------------------------------------------------
+
+--- Creates a new effect object which can be registered as a valid effect for MarkedTexts to use.
+---@return Marker.Effect
+function marker.newEffect()
+    -- new Marker.Effect
+    local effect = {}
+    return setmetatable(effect, EffectMT)
+end
+
+---@type table<string, Marker.Effect>
+marker.registeredEffects = {}
+
+--- Registers an effect, making it usable in MarkedTexts.
+---@param effectName string
+---@param effect? Marker.Effect
+---@return Marker.Effect
+function marker.registerEffect(effectName, effect)
+    effect = effect or marker.newEffect()
+    marker.registeredEffects[effectName] = effect
+    return effect
+end
+
+-----
+local fx
+
+fx = marker.registerEffect("censor")
+fx.charFn = function (char, attributes)
+    local repl = attributes.repl or "*"
+    char.str = repl
 end
 
 -- Font stuff --------------------------------------------------------------------------------------
