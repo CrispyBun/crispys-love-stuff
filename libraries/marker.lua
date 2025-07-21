@@ -53,6 +53,7 @@ local MarkedTextMT = {__index = MarkedText}
 ---@class Marker.EffectChar
 ---@field str string The string the char wants to render
 ---@field font Marker.Font The font of the char
+---@field color? string The color (from the colors table) of the char
 ---@field xPlacement number The X coordinate of the char
 ---@field yPlacement number The Y coordinate of the char
 ---@field xOffset number Offset from the X coordinate (resets to 0 at the start of each update)
@@ -109,6 +110,35 @@ local LoveFontMT = {__index = LoveFont}
 ---@field name string
 ---@field attributes table<string, string>
 ---@field wasAppliedToChar boolean
+
+-- Misc --------------------------------------------------------------------------------------------
+
+--- Defined colors for chars. Can be overwritten with a completely different table.
+---@type table<string, [number, number, number]?>
+marker.colors = {
+    red = {1, 0.1, 0.15},
+    green = {0, 1, 0.1},
+    blue = {0.2, 0.2, 1},
+}
+
+marker.defaultColor = {1,1,1}
+
+--- This can be defined to handle chars using color names that aren't defined in the colors table.
+--- This could, for example, look for the color in another table elsewhere.
+---@type (fun(colorName: string): [number, number, number]?)?
+marker.resolveUnknownColor = nil
+
+--- Gets the color associated with the given color name, or if there is none, returns the default color.
+---@param colorName string?
+---@return [number, number, number]
+function marker.getColor(colorName)
+    if not colorName then return marker.defaultColor end
+
+    local color = marker.colors[colorName]
+    if not color and marker.resolveUnknownColor then color = marker.resolveUnknownColor(colorName) end
+
+    return color or marker.defaultColor
+end
 
 -- MarkedText --------------------------------------------------------------------------------------
 
@@ -598,11 +628,15 @@ function EffectChar:draw(x, y)
     y = y or 0
 
     local str = self.str
+    local color = marker.getColor(self.color)
 
     local drawnX = math.floor(x + self.xPlacement + self.xOffset)
     local drawnY = math.floor(y + self.yPlacement + self.yOffset)
 
+    local cr, cg, cb, ca = love.graphics.getColor()
+    love.graphics.setColor(color)
     self.font:draw(str, drawnX, drawnY)
+    love.graphics.setColor(cr, cg, cb, ca)
 end
 
 -- Effects -----------------------------------------------------------------------------------------
@@ -632,9 +666,16 @@ end
 local fx
 
 fx = marker.registerEffect("censor")
+---@diagnostic disable-next-line: duplicate-set-field
 fx.charFn = function (char, attributes)
     local repl = attributes.repl or "*"
     char.str = repl
+end
+
+fx = marker.registerEffect("color")
+---@diagnostic disable-next-line: duplicate-set-field
+fx.charFn = function (char, attributes)
+    char.color = attributes.value
 end
 
 -- Font stuff --------------------------------------------------------------------------------------
