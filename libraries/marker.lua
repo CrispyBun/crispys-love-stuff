@@ -38,6 +38,7 @@ local marker = {}
 ---@class Marker.MarkedText
 ---@field x number The X coordinate of the text
 ---@field y number The Y coordinate of the text
+---@field time number The current time (in seconds), relative to some unknown starting point. Used by some effects.
 ---@field wrapLimit number How wide the text is allowed to be before it must wrap
 ---@field textAlign Marker.TextAlign The horizontal alignment of the text
 ---@field verticalAlign Marker.VerticalAlign The vertical alignment of the text
@@ -51,7 +52,8 @@ local MarkedTextMT = {__index = MarkedText}
 
 --- A single char of a MarkedText
 ---@class Marker.EffectChar
----@field str string The string the char wants to render
+---@field str string The string the char represents
+---@field renderedStr? string The string the char will actually render to the screen instead of the assigned `str`
 ---@field font Marker.Font The font of the char
 ---@field color? string The color (from the colors table) of the char
 ---@field xPlacement number The X coordinate of the char
@@ -65,7 +67,7 @@ local EffectChar = {}
 local EffectChatMT = {__index = EffectChar}
 
 ---@class Marker.Effect
----@field charFn? fun(char: Marker.EffectChar, attributes: table<string, string?>)
+---@field charFn? fun(char: Marker.EffectChar, attributes: table<string, string?>, time: number, charIndex: integer)
 ---@field stringFn? nil TODO: Gets a "view" of chars in the text it "owns", the view has methods for changing the text (and inserting different effectChars)
 ---@field textFn? nil TODO: Gets the entire MarkedText
 local Effect = {}
@@ -163,6 +165,7 @@ function marker.newMarkedText(str, font, x, y, wrapLimit, textAlign)
     local markedText = {
         x = x or 0,
         y = y or 0,
+        time = 0,
         wrapLimit = wrapLimit or math.huge,
         textAlign = textAlign or "start",
         verticalAlign = "start",
@@ -177,6 +180,17 @@ function marker.newMarkedText(str, font, x, y, wrapLimit, textAlign)
     markedText:generate()
 
     return markedText
+end
+
+--- Updates the effects on the text. This is required for effects that change over time to work.
+--- 
+--- If `dt` is supplied, it gets added to the internal `MarkedText.time` value.
+--- If it isn't, the time value should be updated manually in some other way.
+---@param dt? number
+function MarkedText:update(dt)
+    dt = dt or 0
+    self.time = self.time + dt
+    self:processEffects()
 end
 
 --- Sets the text's position. The layout does not need to be updated.
@@ -353,18 +367,29 @@ end
 --- Used internally.
 function MarkedText:processEffects()
     local chars = self.effectChars
+    local time = self.time
+
+    local charIndexWithoutDisabled = 0
 
     for charIndex = 1, #chars do
         local char = chars[charIndex]
+        local isDisabled = char:isDisabled()
         local effects = char.effects
         local effectOrder = char.effectOrder
 
-        for effectIndex = 1, #effectOrder do
-            local effectName = effectOrder[effectIndex]
-            local effectAttributes = effects[effectName]
-            local effect = marker.registeredEffects[effectName]
-            if effect then
-                effect.charFn(char, effectAttributes)
+        if not isDisabled then
+            charIndexWithoutDisabled = charIndexWithoutDisabled + 1
+
+            char.xOffset = 0
+            char.yOffset = 0
+
+            for effectIndex = 1, #effectOrder do
+                local effectName = effectOrder[effectIndex]
+                local effectAttributes = effects[effectName]
+                local effect = marker.registeredEffects[effectName]
+                if effect and effect.charFn then
+                    effect.charFn(char, effectAttributes, time, charIndexWithoutDisabled)
+                end
             end
         end
     end
@@ -633,7 +658,7 @@ function EffectChar:draw(x, y)
     x = x or 0
     y = y or 0
 
-    local str = self.str
+    local str = self.renderedStr or self.str
     local color = marker.getColor(self.color)
 
     local drawnX = math.floor(x + self.xPlacement + self.xOffset)
@@ -682,6 +707,84 @@ fx = marker.registerEffect("color")
 ---@diagnostic disable-next-line: duplicate-set-field
 fx.charFn = function (char, attributes)
     char.color = attributes.value
+end
+
+fx = marker.registerEffect("shake")
+---@diagnostic disable-next-line: duplicate-set-field
+fx.charFn = function (char, attributes, time, charIndex)
+    local amount = (tonumber(attributes.amount) or 1) * 4
+    local speed = (tonumber(attributes.speed) or 1)
+
+    local progress = math.floor(time * 16 * speed)
+
+    local charSeed = charIndex + progress
+    math.randomseed(charSeed)
+
+    local xOffset = (math.random() - 0.5) * amount + 0.5
+    local yOffset = (math.random() - 0.5) * amount + 0.5
+    char.xOffset = char.xOffset + xOffset
+    char.yOffset = char.yOffset + yOffset
+end
+
+fx = marker.registerEffect("wiggle")
+---@diagnostic disable-next-line: duplicate-set-field
+fx.charFn = function (char, attributes, time, charIndex)
+    local amount = (tonumber(attributes.amount) or 1) * 5
+    local speed = (tonumber(attributes.speed) or 1)
+
+    local progressFine = time * 16 * speed
+    local progress = math.floor(progressFine)
+    local progressFract = progressFine % 1
+
+    local charSeed = charIndex + progress
+
+    math.randomseed(charSeed)
+    local xTarget = (math.random() - 0.5) * amount + 0.5
+    local yTarget = (math.random() - 0.5) * amount + 0.5
+
+    math.randomseed(charSeed-1)
+    local xPrevious = (math.random() - 0.5) * amount + 0.5
+    local yPrevious = (math.random() - 0.5) * amount + 0.5
+
+    local t = (-math.pi/2) + (math.pi) * progressFract
+    local interp = (math.sin(t)+1)/2
+
+    local xOffset = xPrevious + (xTarget - xPrevious) * interp
+    local yOffset = yPrevious + (yTarget - yPrevious) * interp
+    char.xOffset = char.xOffset + xOffset
+    char.yOffset = char.yOffset + yOffset
+end
+
+fx = marker.registerEffect("wave")
+---@diagnostic disable-next-line: duplicate-set-field
+fx.charFn = function (char, attributes, time, charIndex)
+    local amount = (tonumber(attributes.amount) or 1) * 5
+    local speed = tonumber(attributes.speed) or 1
+
+    char.yOffset = char.yOffset + math.sin((time * speed * 10) - (charIndex / 2)) * amount
+end
+
+fx = marker.registerEffect("harmonica")
+---@diagnostic disable-next-line: duplicate-set-field
+fx.charFn = function (char, attributes, time, charIndex)
+    local amount = (tonumber(attributes.amount) or 1) * 5
+    local speed = tonumber(attributes.speed) or 1
+
+    char.xOffset = char.xOffset + math.sin((time * speed * 10) - (charIndex / 2)) * amount
+end
+
+local corruptChars = {'#', '$', '%', '&', '@', '=', '?', '6', '<', '>'}
+fx = marker.registerEffect("corrupt")
+---@diagnostic disable-next-line: duplicate-set-field
+fx.charFn = function (char, attributes, time)
+    local speed = tonumber(attributes.speed) or 1
+
+    local progress = math.floor(time * 20 * speed)
+    local charSeed = utf8.codepoint(char.str) + progress
+    math.randomseed(charSeed)
+
+    local pickedCharIndex = math.random(1, #corruptChars)
+    char.renderedStr = corruptChars[pickedCharIndex]
 end
 
 -- Font stuff --------------------------------------------------------------------------------------
