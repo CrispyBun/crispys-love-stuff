@@ -60,6 +60,7 @@ local MarkedTextMT = {__index = MarkedText}
 ---@field yOffset number Offset from the Y coordinate (resets to 0 at the start of each update)
 ---@field disabled boolean May be set to true when getting laid out by the MarkedText (won't render and should be ignored for most purposes)
 ---@field effects table<string, table<string, string?>> The effects applied to this char (the key is the effect name) and all the attributes set for them
+---@field effectOrder string[] The effects applied to this char and the order in which they should be handled
 local EffectChar = {}
 local EffectChatMT = {__index = EffectChar}
 
@@ -355,8 +356,12 @@ function MarkedText:processEffects()
 
     for charIndex = 1, #chars do
         local char = chars[charIndex]
+        local effects = char.effects
+        local effectOrder = char.effectOrder
 
-        for effectName, effectAttributes in pairs(char.effects) do
+        for effectIndex = 1, #effectOrder do
+            local effectName = effectOrder[effectIndex]
+            local effectAttributes = effects[effectName]
             local effect = marker.registeredEffects[effectName]
             if effect then
                 effect.charFn(char, effectAttributes)
@@ -536,6 +541,7 @@ function marker.newEffectChar(str, x, y, font)
         yOffset = 0,
         disabled = false,
         effects = {},
+        effectOrder = {},
     }
     return setmetatable(effectChar, EffectChatMT)
 end
@@ -795,6 +801,23 @@ for key, value in pairs(marker.parser.allowedTagStartChars) do
     marker.parser.allowedTagChars[key] = marker.parser.allowedTagChars[key] or value
 end
 
+---@param arr any[]
+local function clearArray(arr)
+    for i = 1, #arr do arr[i] = nil end
+end
+
+---@param arr any[]
+local function removeDuplicates(arr)
+    local seen = {}
+    for i = #arr, 1, -1 do
+        local value = arr[i]
+        if seen[value] then
+            table.remove(arr, i)
+        end
+        seen[value] = true
+    end
+end
+
 --- Parses and processes all tags in the given sequence of EffectChars
 ---@param effectChars Marker.EffectChar[]
 ---@return Marker.EffectChar[]
@@ -805,6 +828,9 @@ end
 ---@param effectChar Marker.EffectChar
 ---@param tagStack Marker.Parser.TagStackEntry[]
 local function applyTagStackToEffectChar(effectChar, tagStack)
+    local effectOrder = effectChar.effectOrder
+    clearArray(effectOrder)
+
     for tagIndex = 1, #tagStack do
         local tag = tagStack[tagIndex]
         local tagName = tag.name
@@ -814,8 +840,11 @@ local function applyTagStackToEffectChar(effectChar, tagStack)
             copiedAttributes[attributeName] = attributeValue
         end
         effectChar.effects[tagName] = copiedAttributes
+        effectOrder[#effectOrder+1] = tagName
         tag.wasAppliedToChar = true
     end
+
+    removeDuplicates(effectOrder)
 end
 
 ---@param charStr string
