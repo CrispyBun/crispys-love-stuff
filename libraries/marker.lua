@@ -53,14 +53,14 @@ local MarkedTextMT = {__index = MarkedText}
 --- A single char of a MarkedText
 ---@class Marker.EffectChar
 ---@field str string The string the char represents
----@field renderedStr? string The string the char will actually render to the screen instead of the assigned `str`
+---@field renderedStr? string The string the char will actually render to the screen instead of the assigned `str`. Gets reset each time text effects are about to be processed.
 ---@field font Marker.Font The font of the char
----@field color? string The color (from the colors table) of the char
+---@field color? string The color (from the colors table) of the char. Gets reset each time text effects are about to be processed.
 ---@field xPlacement number The X coordinate of the char
 ---@field yPlacement number The Y coordinate of the char
----@field xOffset number Offset from the X coordinate (resets to 0 at the start of each update)
----@field yOffset number Offset from the Y coordinate (resets to 0 at the start of each update)
----@field disabled boolean May be set to true when getting laid out by the MarkedText (won't render and should be ignored for most purposes)
+---@field xOffset number Offset from the X coordinate. Gets reset each time text effects are about to be processed.
+---@field yOffset number Offset from the Y coordinate. Gets reset each time text effects are about to be processed.
+---@field disabled boolean May be set to true when getting laid out by the MarkedText (won't render and should be ignored for most purposes). Gets reset on layout.
 ---@field effects table<string, table<string, string?>> The effects applied to this char (the key is the effect name) and all the attributes set for them
 ---@field effectOrder string[] The effects applied to this char and the order in which they should be handled
 local EffectChar = {}
@@ -380,7 +380,6 @@ function MarkedText:processEffects()
 
     local effectStringStartIndices = {}
     local charView = marker.newEffectCharView(chars, 1, 1)
-    local charIndexWithoutDisabled = 0
 
     for charIndex = 1, #chars do
         local char = chars[charIndex]
@@ -392,8 +391,10 @@ function MarkedText:processEffects()
         local prevCharEffectOrder = charPrev and charPrev.effectOrder or emptyTable
         local nextCharEffectOrder = charNext and charNext.effectOrder or emptyTable
 
-        charIndexWithoutDisabled = charIndexWithoutDisabled + (char:isDisabled() and 0 or 1)
-
+        -- Reset values which don't require a re-layout on change
+        -- (the effects are expected to set them again each call)
+        char.color = nil
+        char.renderedStr = nil
         char.xOffset = 0
         char.yOffset = 0
 
@@ -408,7 +409,7 @@ function MarkedText:processEffects()
 
             if effect then
                 if effect.charFn then
-                    effect.charFn(char, effectAttributes, time, charIndexWithoutDisabled)
+                    effect.charFn(char, effectAttributes, time, charIndex)
                 end
                 if effect.stringFn and effectOrder[effectIndex] ~= nextCharEffectOrder[effectIndex] then
                     charView:_init(chars, effectStringStartIndices[effectIndex], charIndex)
