@@ -67,8 +67,8 @@ local EffectChar = {}
 local EffectChatMT = {__index = EffectChar}
 
 ---@class Marker.Effect
----@field charFn? fun(char: Marker.EffectChar, attributes: table<string, string?>, time: number, charIndex: integer) Receives each char the effect affects.
----@field stringFn? fun(charView: Marker.EffectCharView, effectName: string, time: number) Receives a view for each continuous chain of chars the effect affects.
+---@field charFn? fun(char: Marker.EffectChar, attributes: table<string, string?>, time: number, charIndex: integer) Receives each char the effect affects. The outermost tags get processed first.
+---@field stringFn? fun(charView: Marker.EffectCharView, effectName: string, time: number) Receives a view for each continuous chain of chars the effect affects. The innermost tags get processed first.
 ---@field textFn? nil TODO: Gets the entire MarkedText
 local Effect = {}
 local EffectMT = {__index = Effect}
@@ -398,23 +398,29 @@ function MarkedText:processEffects()
         char.xOffset = 0
         char.yOffset = 0
 
+        -- Char scope effects
         for effectIndex = 1, #effectOrder do
             local effectName = effectOrder[effectIndex]
             local effectAttributes = effects[effectName]
+            local effect = marker.registeredEffects[effectName]
+
+            if effect and effect.charFn then
+                effect.charFn(char, effectAttributes, time, charIndex)
+            end
+        end
+
+        -- String scope effects
+        for effectIndex = #effectOrder, 1, -1 do
+            local effectName = effectOrder[effectIndex]
             local effect = marker.registeredEffects[effectName]
 
             if effectOrder[effectIndex] ~= prevCharEffectOrder[effectIndex] then
                 effectStringStartIndices[effectIndex] = charIndex
             end
 
-            if effect then
-                if effect.charFn then
-                    effect.charFn(char, effectAttributes, time, charIndex)
-                end
-                if effect.stringFn and effectOrder[effectIndex] ~= nextCharEffectOrder[effectIndex] then
-                    charView:_init(chars, effectStringStartIndices[effectIndex], charIndex)
-                    effect.stringFn(charView, effectName, time)
-                end
+            if effect and effect.stringFn and effectOrder[effectIndex] ~= nextCharEffectOrder[effectIndex] then
+                charView:_init(chars, effectStringStartIndices[effectIndex], charIndex)
+                effect.stringFn(charView, effectName, time)
             end
         end
     end
