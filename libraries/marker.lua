@@ -67,11 +67,18 @@ local EffectChar = {}
 local EffectChatMT = {__index = EffectChar}
 
 ---@class Marker.Effect
----@field charFn? fun(char: Marker.EffectChar, attributes: table<string, string?>, time: number, charIndex: integer)
----@field stringFn? nil TODO: Gets a "view" of chars in the text it "owns", the view has methods for changing the text (and inserting different effectChars)
+---@field charFn? fun(char: Marker.EffectChar, attributes: table<string, string?>, time: number, charIndex: integer) Receives each char the effect affects.
+---@field stringFn? fun(charView: Marker.EffectCharView, effectName: string, time: number) Receives a view for each continuous chain of chars the effect affects.
 ---@field textFn? nil TODO: Gets the entire MarkedText
 local Effect = {}
 local EffectMT = {__index = Effect}
+
+---@class Marker.EffectCharView
+---@field private _indexFirst integer
+---@field private _indexLast integer
+---@field private _chars Marker.EffectChar[]
+local EffectCharView = {}
+local EffectCharViewMT = {__index = EffectCharView}
 
 --- An abstract font class for drawing characters in some way
 ---@class Marker.Font
@@ -363,32 +370,49 @@ function MarkedText:layout()
     end
 end
 
+local emptyTable = {}
+
 --- Calls and applies all the effects attached to the chars in the text.
 --- Used internally.
 function MarkedText:processEffects()
     local chars = self.effectChars
     local time = self.time
 
+    local effectStringStartIndices = {}
+    local charView = marker.newEffectCharView(chars, 1, 1)
     local charIndexWithoutDisabled = 0
 
     for charIndex = 1, #chars do
         local char = chars[charIndex]
-        local isDisabled = char:isDisabled()
+        local charPrev = chars[charIndex-1]
+        local charNext = chars[charIndex+1]
         local effects = char.effects
         local effectOrder = char.effectOrder
 
-        if not isDisabled then
-            charIndexWithoutDisabled = charIndexWithoutDisabled + 1
+        local prevCharEffectOrder = charPrev and charPrev.effectOrder or emptyTable
+        local nextCharEffectOrder = charNext and charNext.effectOrder or emptyTable
 
-            char.xOffset = 0
-            char.yOffset = 0
+        charIndexWithoutDisabled = charIndexWithoutDisabled + (char:isDisabled() and 0 or 1)
 
-            for effectIndex = 1, #effectOrder do
-                local effectName = effectOrder[effectIndex]
-                local effectAttributes = effects[effectName]
-                local effect = marker.registeredEffects[effectName]
-                if effect and effect.charFn then
+        char.xOffset = 0
+        char.yOffset = 0
+
+        for effectIndex = 1, #effectOrder do
+            local effectName = effectOrder[effectIndex]
+            local effectAttributes = effects[effectName]
+            local effect = marker.registeredEffects[effectName]
+
+            if effectOrder[effectIndex] ~= prevCharEffectOrder[effectIndex] then
+                effectStringStartIndices[effectIndex] = charIndex
+            end
+
+            if effect then
+                if effect.charFn then
                     effect.charFn(char, effectAttributes, time, charIndexWithoutDisabled)
+                end
+                if effect.stringFn and effectOrder[effectIndex] ~= nextCharEffectOrder[effectIndex] then
+                    charView:_init(chars, effectStringStartIndices[effectIndex], charIndex)
+                    effect.stringFn(charView, effectName, time)
                 end
             end
         end
@@ -785,6 +809,48 @@ fx.charFn = function (char, attributes, time)
 
     local pickedCharIndex = math.random(1, #corruptChars)
     char.renderedStr = corruptChars[pickedCharIndex]
+end
+
+-- CharView ----------------------------------------------------------------------------------------
+
+--- Creates a new CharView for viewing and editing a range of characters in an EffectChar array.
+--- Used internally.
+---@param chars Marker.EffectChar[]
+---@param indexFirst integer
+---@param indexLast integer
+---@return Marker.EffectCharView
+function marker.newEffectCharView(chars, indexFirst, indexLast)
+    local view = setmetatable({}, EffectCharViewMT)
+    view:_init(chars, indexFirst, indexLast)
+    return view
+end
+
+--- (Re-)initializes the CharView. Used internally.
+---@param chars Marker.EffectChar[]
+---@param indexFirst integer
+---@param indexLast integer
+function EffectCharView:_init(chars, indexFirst, indexLast)
+    self._chars = chars
+    self._indexFirst = indexFirst
+    self._indexLast = indexLast
+end
+
+--- Returns the amount of chars in the view (aka the max viewable index)
+---@return integer
+function EffectCharView:getLength()
+    return self._indexLast - self._indexFirst + 1
+end
+
+--- Gets the char at the given (relative) index.
+--- The index must be in the range between `1` and the return value of `getLength()`.
+---@param index integer
+---@return Marker.EffectChar
+function EffectCharView:getChar(index)
+    local indexReal = self._indexFirst + index - 1
+    if indexReal < self._indexFirst or indexReal > self._indexLast then
+        error("Attempting to index char outside of view", 2)
+    end
+    return self._chars[indexReal]
 end
 
 -- Font stuff --------------------------------------------------------------------------------------
