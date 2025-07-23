@@ -119,7 +119,6 @@ local LoveFontMT = {__index = LoveFont}
 ---@class Marker.Parser.TagStackEntry
 ---@field name string
 ---@field attributes table<string, string>
----@field wasAppliedToChar boolean
 
 -- Misc --------------------------------------------------------------------------------------------
 
@@ -1025,7 +1024,6 @@ local function applyTagStackToEffectChar(effectChar, tagStack)
         end
         effectChar.effects[tagName] = copiedAttributes
         effectOrder[#effectOrder+1] = tagName
-        tag.wasAppliedToChar = true
     end
 
     removeDuplicates(effectOrder)
@@ -1301,12 +1299,18 @@ function marker.parser.parse_tag(effectChars, i, effectCharsNew, tagStack)
     tagStack[#tagStack+1] = {
         name = tagName,
         attributes = tagAttributes,
-        wasAppliedToChar = false
     }
 
     if tagIsSelfClosing then
         appendNewCharToCharOutput("", effectChars, effectCharsNew, tagStack)
         tagStack[#tagStack] = nil
+    end
+
+    if -- another tag (opening or closing) is flush with this one right after
+        effectChars[i] and effectChars[i].str == "<"
+        and effectChars[i+1] and (marker.parser.allowedTagStartChars[effectChars[i+1].str] or effectChars[i+1].str == "/")
+    then
+        appendNewCharToCharOutput("", effectChars, effectCharsNew, tagStack)
     end
 
     return marker.parser.parse_text(effectChars, i, effectCharsNew, tagStack)
@@ -1325,9 +1329,6 @@ function marker.parser.parse_closingTag(effectChars, i, effectCharsNew, tagStack
 
     local tagStackTop = tagStack[#tagStack]
     if tagStackTop and tagStackTop.name == tagName then
-        if not tagStackTop.wasAppliedToChar then
-            appendNewCharToCharOutput("", effectChars, effectCharsNew, tagStack)
-        end
         tagStack[#tagStack] = nil
     end
 
@@ -1342,6 +1343,13 @@ function marker.parser.parse_closingTag(effectChars, i, effectCharsNew, tagStack
         end
 
         i = i + 1
+    end
+
+    if -- another tag (opening or closing) is flush with this one right after
+        effectChars[i] and effectChars[i].str == "<"
+        and effectChars[i+1] and (marker.parser.allowedTagStartChars[effectChars[i+1].str] or effectChars[i+1].str == "/")
+    then
+        appendNewCharToCharOutput("", effectChars, effectCharsNew, tagStack)
     end
 
     return marker.parser.parse_text(effectChars, i, effectCharsNew, tagStack)
