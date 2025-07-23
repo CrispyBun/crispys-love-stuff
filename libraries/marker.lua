@@ -804,18 +804,26 @@ fx.charFn = function (char, attributes, time, charIndex)
     char.xOffset = char.xOffset + math.sin((time * speed * 10) - (charIndex / 2)) * amount
 end
 
-local corruptChars = {'#', '$', '%', '&', '@', '=', '?', '6', '<', '>'}
 fx = marker.registerEffect("corrupt")
 ---@diagnostic disable-next-line: duplicate-set-field
-fx.charFn = function (char, attributes, time)
+fx.charFn = function (char, attributes, time, charIndex)
+    if not char:isSymbol() then return end
+
     local speed = tonumber(attributes.speed) or 1
+    local chars = attributes.chars or "#$%&@=*?!"
+
+    local charsLen = utf8.len(chars) or 0
+    if charsLen == 0 then
+        char.renderedStr = ""
+        return
+    end
 
     local progress = math.floor(time * 20 * speed)
-    local charSeed = utf8.codepoint(char.str) + progress
+    local charSeed = 100 * charIndex + progress
     math.randomseed(charSeed)
 
-    local pickedCharIndex = math.random(1, #corruptChars)
-    char.renderedStr = corruptChars[pickedCharIndex]
+    local pickedCharIndex = math.random(1, charsLen)
+    char.renderedStr = string.sub(chars, utf8.offset(chars, pickedCharIndex), utf8.offset(chars, pickedCharIndex+1)-1)
 end
 
 -- CharView ----------------------------------------------------------------------------------------
