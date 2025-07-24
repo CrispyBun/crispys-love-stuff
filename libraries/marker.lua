@@ -61,14 +61,13 @@ local MarkedTextMT = {__index = MarkedText}
 ---@field xOffset number Offset from the X coordinate. Gets reset each time text effects are about to be processed.
 ---@field yOffset number Offset from the Y coordinate. Gets reset each time text effects are about to be processed.
 ---@field disabled boolean May be set to true when getting laid out by the MarkedText (won't render and should be ignored for most purposes). Gets reset on layout.
----@field effects table<string, table<string, string?>> The effects applied to this char (the key is the effect name) and all the attributes set for them
----@field effectOrder string[] The effects applied to this char and the order in which they should be handled
+---@field effects Marker.EffectData[] All the effects applied to this char
 local EffectChar = {}
 local EffectChatMT = {__index = EffectChar}
 
 ---@class Marker.Effect
 ---@field charFn? fun(char: Marker.EffectChar, attributes: table<string, string?>, time: number, charIndex: integer) Receives each char the effect affects. The outermost tags get processed first.
----@field stringFn? fun(charView: Marker.EffectCharView, effectName: string, time: number) Receives a view for each continuous chain of chars the effect affects. The innermost tags get processed first.
+---@field stringFn? fun(charView: Marker.EffectCharView, attributes: table<string, string?>, time: number) Receives a view for each continuous chain of chars the effect affects. The innermost tags get processed first.
 ---@field textFn? nil TODO: Gets the entire MarkedText
 local Effect = {}
 local EffectMT = {__index = Effect}
@@ -116,9 +115,9 @@ local LoveFontMT = {__index = LoveFont}
 ---| '"top"' # Same as "start"
 ---| '"bottom"' # Same as "end"
 
----@class Marker.Parser.TagStackEntry
+---@class Marker.EffectData
 ---@field name string
----@field attributes table<string, string>
+---@field attributes table<string, string?>
 
 -- Misc --------------------------------------------------------------------------------------------
 
@@ -385,10 +384,9 @@ function MarkedText:processEffects()
         local charPrev = chars[charIndex-1]
         local charNext = chars[charIndex+1]
         local effects = char.effects
-        local effectOrder = char.effectOrder
 
-        local prevCharEffectOrder = charPrev and charPrev.effectOrder or emptyTable
-        local nextCharEffectOrder = charNext and charNext.effectOrder or emptyTable
+        local prevCharEffects = charPrev and charPrev.effects or emptyTable
+        local nextCharEffects = charNext and charNext.effects or emptyTable
 
         -- Reset values which don't require a re-layout on change
         -- (the effects are expected to set them again each call)
@@ -398,9 +396,10 @@ function MarkedText:processEffects()
         char.yOffset = 0
 
         -- Char scope effects
-        for effectIndex = 1, #effectOrder do
-            local effectName = effectOrder[effectIndex]
-            local effectAttributes = effects[effectName]
+        for effectIndex = 1, #effects do
+            local effectData = effects[effectIndex]
+            local effectName = effectData.name
+            local effectAttributes = effectData.attributes
             local effect = marker.registeredEffects[effectName]
 
             if effect and effect.charFn then
@@ -409,17 +408,21 @@ function MarkedText:processEffects()
         end
 
         -- String scope effects
-        for effectIndex = #effectOrder, 1, -1 do
-            local effectName = effectOrder[effectIndex]
+        for effectIndex = #effects, 1, -1 do
+            local effectData = effects[effectIndex]
+            local effectName = effectData.name
+            local effectAttributes = effectData.attributes
             local effect = marker.registeredEffects[effectName]
 
-            if effectOrder[effectIndex] ~= prevCharEffectOrder[effectIndex] then
+            -- Inequality check on the entire EffectData object works
+            -- because it doesn't get copied, the chars share the same reference.
+            if effects[effectIndex] ~= prevCharEffects[effectIndex] then
                 effectStringStartIndices[effectIndex] = charIndex
             end
 
-            if effect and effect.stringFn and effectOrder[effectIndex] ~= nextCharEffectOrder[effectIndex] then
+            if effect and effect.stringFn and effects[effectIndex] ~= nextCharEffects[effectIndex] then
                 charView:_init(chars, effectStringStartIndices[effectIndex], charIndex)
-                effect.stringFn(charView, effectName, time)
+                effect.stringFn(charView, effectAttributes, time)
             end
         end
     end
@@ -596,7 +599,6 @@ function marker.newEffectChar(str, x, y, font)
         yOffset = 0,
         disabled = false,
         effects = {},
-        effectOrder = {},
     }
     return setmetatable(effectChar, EffectChatMT)
 end
@@ -989,18 +991,6 @@ local function clearArray(arr)
     for i = 1, #arr do arr[i] = nil end
 end
 
----@param arr any[]
-local function removeDuplicates(arr)
-    local seen = {}
-    for i = #arr, 1, -1 do
-        local value = arr[i]
-        if seen[value] then
-            table.remove(arr, i)
-        end
-        seen[value] = true
-    end
-end
-
 --- Parses and processes all tags in the given sequence of EffectChars
 ---@param effectChars Marker.EffectChar[]
 ---@return Marker.EffectChar[]
@@ -1009,30 +999,20 @@ function marker.parser.parse(effectChars)
 end
 
 ---@param effectChar Marker.EffectChar
----@param tagStack Marker.Parser.TagStackEntry[]
+---@param tagStack Marker.EffectData[]
 local function applyTagStackToEffectChar(effectChar, tagStack)
-    local effectOrder = effectChar.effectOrder
-    clearArray(effectOrder)
+    local effects = effectChar.effects
+    clearArray(effects)
 
     for tagIndex = 1, #tagStack do
-        local tag = tagStack[tagIndex]
-        local tagName = tag.name
-        local tagAttributes = tag.attributes
-        local copiedAttributes = effectChar.effects[tagName] or {}
-        for attributeName, attributeValue in pairs(tagAttributes) do
-            copiedAttributes[attributeName] = attributeValue
-        end
-        effectChar.effects[tagName] = copiedAttributes
-        effectOrder[#effectOrder+1] = tagName
+        effects[tagIndex] = tagStack[tagIndex]
     end
-
-    removeDuplicates(effectOrder)
 end
 
 ---@param charStr string
 ---@param effectChars Marker.EffectChar[]
 ---@param effectCharsNew Marker.EffectChar[]
----@param tagStack Marker.Parser.TagStackEntry[]
+---@param tagStack Marker.EffectData[]
 local function appendNewCharToCharOutput(charStr, effectChars, effectCharsNew, tagStack)
     if not effectChars[1] then error("effectChars can't be empty") end
     local fillerChar = marker.newEffectChar(charStr, 0, 0, effectChars[1].font)
@@ -1043,7 +1023,7 @@ end
 ---@param effectChars Marker.EffectChar[]
 ---@param i integer
 ---@param effectCharsNew Marker.EffectChar[]
----@param tagStack Marker.Parser.TagStackEntry[]
+---@param tagStack Marker.EffectData[]
 ---@return Marker.EffectChar[]
 function marker.parser.parse_text(effectChars, i, effectCharsNew, tagStack)
     while i <= #effectChars do
@@ -1113,7 +1093,7 @@ end
 ---@param effectChars Marker.EffectChar[]
 ---@param i integer
 ---@param effectCharsNew Marker.EffectChar[]
----@param tagStack Marker.Parser.TagStackEntry[]
+---@param tagStack Marker.EffectData[]
 ---@return Marker.EffectChar[]
 function marker.parser.parse_potentialCharacterEntity(effectChars, i, effectCharsNew, tagStack)
     local parsedEntity
@@ -1133,7 +1113,7 @@ end
 ---@param effectChars Marker.EffectChar[]
 ---@param i integer
 ---@param effectCharsNew Marker.EffectChar[]
----@param tagStack Marker.Parser.TagStackEntry[]
+---@param tagStack Marker.EffectData[]
 ---@return Marker.EffectChar[]
 function marker.parser.parse_potentialTagStart(effectChars, i, effectCharsNew, tagStack)
     if effectChars[i].str ~= "<" then error("Invalid tag opener") end
@@ -1287,7 +1267,7 @@ end
 ---@param effectChars Marker.EffectChar[]
 ---@param i integer
 ---@param effectCharsNew Marker.EffectChar[]
----@param tagStack Marker.Parser.TagStackEntry[]
+---@param tagStack Marker.EffectData[]
 ---@return Marker.EffectChar[]
 function marker.parser.parse_tag(effectChars, i, effectCharsNew, tagStack)
     if not marker.parser.allowedTagStartChars[effectChars[i].str] then error("Invalid tag start") end
@@ -1319,7 +1299,7 @@ end
 ---@param effectChars Marker.EffectChar[]
 ---@param i integer
 ---@param effectCharsNew Marker.EffectChar[]
----@param tagStack Marker.Parser.TagStackEntry[]
+---@param tagStack Marker.EffectData[]
 ---@return Marker.EffectChar[]
 function marker.parser.parse_closingTag(effectChars, i, effectCharsNew, tagStack)
     if effectChars[i].str ~= "/" then error("Invalid closing tag start") end
