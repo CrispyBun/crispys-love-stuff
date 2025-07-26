@@ -39,6 +39,7 @@ local marker = {}
 ---@field x number The X coordinate of the text
 ---@field y number The Y coordinate of the text
 ---@field time number The current time (in seconds), relative to some unknown starting point. Used by some effects.
+---@field textVariables table Variables which some text effects can read and display. If the variable isn't found here, the effects will then look into the root `marker.textVariables` table. You shouldn't overwrite this table completely, as that would clear necessary metatable data.
 ---@field wrapLimit number How wide the text is allowed to be before it must wrap
 ---@field textAlign Marker.TextAlign The horizontal alignment of the text
 ---@field verticalAlign Marker.VerticalAlign The vertical alignment of the text
@@ -91,6 +92,7 @@ local EffectMT = {__index = Effect}
 ---@field charIndex integer The index of the char currently being processed.
 ---@field symbolIndex? integer Like charIndex, but chars that aren't symbols (empty string, control characters) don't add to this index. This is only available for char scope functions.
 ---@field time number The time value (in seconds) set in the text object.
+---@field textVariables table The `textVariables` field of the text object.
 
 ---@class Marker.MarkedCharView
 ---@field private _indexFirst integer
@@ -144,6 +146,12 @@ local LoveFontMT = {__index = LoveFont}
 
 -- Misc --------------------------------------------------------------------------------------------
 
+--- Variables which some text effects can read and display, most notably used by the `<var ref="*"/>` effect.
+marker.textVariables = {}
+
+--- The metatable assigned to `MarkedText.textVariables` tables so they default back to the root table.
+marker.textVariablesTextMT = {__index = marker.textVariables}
+
 --- Defined colors for chars. Can be overwritten with a completely different table.
 ---@type table<string, [number, number, number]?>
 marker.colors = {
@@ -194,6 +202,7 @@ function marker.newMarkedText(str, font, x, y, wrapLimit, textAlign)
         x = x or 0,
         y = y or 0,
         time = 0,
+        textVariables = setmetatable({}, marker.textVariablesTextMT),
         wrapLimit = wrapLimit or math.huge,
         textAlign = textAlign or "start",
         verticalAlign = "start",
@@ -416,6 +425,7 @@ function MarkedText:processEffects()
     local effectInfo = {
         charIndex = 0,
         time = self.time,
+        textVariables = self.textVariables
     }
 
     -- First pass - reset visuals and apply string scope effects
@@ -436,6 +446,7 @@ function MarkedText:processEffects()
                 charView:_init(chars, charIndex, self:findEffectEndIndex(charIndex, effectIndex))
                 effectInfo.charIndex = charIndex
                 effectInfo.time = self.time
+                effectInfo.textVariables = self.textVariables
 
                 local fxRet = effect.stringFn(charView, effectData.attributes, effectInfo)
 
@@ -464,6 +475,7 @@ function MarkedText:processEffects()
                 effectInfo.charIndex = charIndex
                 effectInfo.symbolIndex = symbolIndex
                 effectInfo.time = self.time
+                effectInfo.textVariables = self.textVariables
 
                 local fxRet = effect.charFn(char, effectData.attributes, effectInfo)
 
@@ -986,6 +998,15 @@ marker.registerEffect("counter").stringFn = function (charView, attributes, info
 
     local count = start + math.floor(info.time * speed) * step
     charView:replaceContents(tostring(count))
+    return "update"
+end
+
+marker.registerEffect("var").stringFn = function (charView, attributes, info)
+    local ref = attributes.ref or ""
+
+    local var = info.textVariables[ref]
+    charView:replaceContents(tostring(var))
+    return "update"
 end
 
 -- CharView ----------------------------------------------------------------------------------------
