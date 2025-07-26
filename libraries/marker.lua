@@ -47,6 +47,7 @@ local marker = {}
 ---@field inputString string The string used to generate the text
 ---@field effectChars Marker.EffectChar[] The generated EffectChars
 ---@field ignoreStretchOnLastLine boolean True by default, makes alignments like "justify" look much better on paragraph ending lines.
+---@field updateRequested boolean If true, the text re-apply all its effects to the text on the next call to `update()` and reset this value back to `false`. May be set to true by some effects.
 ---@field layoutRequested boolean If true, the text will call `layout()` on the next call to `update()` and reset this value back to `false`. May be set to true by some effects.
 local MarkedText = {}
 local MarkedTextMT = {__index = MarkedText}
@@ -67,11 +68,23 @@ local EffectChar = {}
 local EffectChatMT = {__index = EffectChar}
 
 ---@class Marker.Effect
----@field charFn? fun(char: Marker.EffectChar, attributes: table<string, string?>, time: number, charIndex: integer) Receives each char the effect affects.
----@field stringFn? fun(charView: Marker.EffectCharView, attributes: table<string, string?>, time: number) Receives a view for each continuous chain of chars the effect affects.
+---@field charFn? fun(char: Marker.EffectChar, attributes: table<string, string?>, time: number, charIndex: integer): Marker.EffectReturnKeyword? Receives each char the effect affects.
+---@field stringFn? fun(charView: Marker.EffectCharView, attributes: table<string, string?>, time: number): Marker.EffectReturnKeyword? Receives a view for each continuous chain of chars the effect affects.
 ---@field textFn? nil TODO: Gets the entire MarkedText
 local Effect = {}
 local EffectMT = {__index = Effect}
+
+--- The optional return value for effects which can request things to happen in the MarkedText.
+--- 
+--- * `"update"` should be used if the effect might look different next frame (e.g. "shake" effect).
+---              Note that this will cause *all* the effects to be updated next frame, not just the one requesting an update.
+--- * `"layout"` should be used if the text needs to re-layout itself to look correct after applying the effect.
+---              It does not need to be used if the effect only calls `CharView:replaceContents()`, as that will request a layout automatically when needed.
+---@alias Marker.EffectReturnKeyword
+---|'"none"' # The effect doesn't request for anything to happen
+---|'"update"' # The effect is requesting another update next frame
+---|'"layout"' # The effect made structural changes to the text and is requesting a layout to happen
+---|'"layout+update"' # Requests both a layout to happen now and an update to happen next frame
 
 ---@class Marker.EffectCharView
 ---@field private _indexFirst integer
@@ -183,6 +196,7 @@ function marker.newMarkedText(str, font, x, y, wrapLimit, textAlign)
         inputString = str or "",
         effectChars = {},
         ignoreStretchOnLastLine = true,
+        updateRequested = false,
         layoutRequested = false,
     }
     setmetatable(markedText, MarkedTextMT)
@@ -201,10 +215,14 @@ function MarkedText:update(dt)
     dt = dt or 0
     self.time = self.time + dt
 
-    self:processEffects()
+    if self.updateRequested then
+        self.updateRequested = false
+        self:processEffects()
+    end
+
     if self.layoutRequested then
-        self:layout()
         self.layoutRequested = false
+        self:layout()
     end
 end
 
@@ -264,6 +282,7 @@ function MarkedText:generate(str)
 
     self:processEffects()
     self:layout()
+    self.layoutRequested = false
 end
 
 ---@param x? number
@@ -385,6 +404,8 @@ function MarkedText:processEffects()
     local time = self.time
 
     local charView = marker.newEffectCharView(chars, 1, 1)
+    local updateRequested = false
+    local layoutRequested = false
 
     -- First pass - reset visuals and apply string scope effects
     for charIndex = #chars, 1, -1 do
@@ -402,9 +423,12 @@ function MarkedText:processEffects()
 
             if effect and effect.stringFn and self:isEffectStartIndex(charIndex, effectIndex) then
                 charView:_init(chars, charIndex, self:findEffectEndIndex(charIndex, effectIndex))
-                effect.stringFn(charView, effectData.attributes, time)
+                local fxRet = effect.stringFn(charView, effectData.attributes, time)
 
-                self.layoutRequested = self.layoutRequested or charView:wereContentsReplaced()
+                updateRequested = updateRequested or (fxRet == "update" or fxRet == "layout+update")
+                layoutRequested = layoutRequested or (fxRet == "layout" or fxRet == "layout+update")
+
+                layoutRequested = layoutRequested or charView:wereContentsReplaced()
             end
         end
     end
@@ -420,10 +444,15 @@ function MarkedText:processEffects()
             local effect = marker.registeredEffects[effectName]
 
             if effect and effect.charFn then
-                effect.charFn(char, effectData.attributes, time, charIndex)
+                local fxRet = effect.charFn(char, effectData.attributes, time, charIndex)
+                updateRequested = updateRequested or (fxRet == "update" or fxRet == "layout+update")
+                layoutRequested = layoutRequested or (fxRet == "layout" or fxRet == "layout+update")
             end
         end
     end
+
+    self.updateRequested = self.updateRequested or updateRequested
+    self.layoutRequested = self.layoutRequested or layoutRequested
 end
 
 ---@return Marker.WrapInfo
@@ -794,7 +823,10 @@ fx = marker.registerEffect("censor")
 ---@diagnostic disable-next-line: duplicate-set-field
 fx.charFn = function (char, attributes)
     local repl = attributes.repl or "*"
+
+    if char.str == repl then return "none" end
     char.str = repl
+    return "layout"
 end
 
 fx = marker.registerEffect("color")
@@ -818,6 +850,8 @@ fx.charFn = function (char, attributes, time, charIndex)
     local yOffset = (math.random() - 0.5) * amount + 0.5
     char.xOffset = char.xOffset + xOffset
     char.yOffset = char.yOffset + yOffset
+
+    return "update"
 end
 
 fx = marker.registerEffect("wiggle")
@@ -847,6 +881,8 @@ fx.charFn = function (char, attributes, time, charIndex)
     local yOffset = yPrevious + (yTarget - yPrevious) * interp
     char.xOffset = char.xOffset + xOffset
     char.yOffset = char.yOffset + yOffset
+
+    return "update"
 end
 
 fx = marker.registerEffect("wave")
@@ -856,6 +892,7 @@ fx.charFn = function (char, attributes, time, charIndex)
     local speed = tonumber(attributes.speed) or 1
 
     char.yOffset = char.yOffset + math.sin((time * speed * 10) - (charIndex / 2)) * amount
+    return "update"
 end
 
 fx = marker.registerEffect("harmonica")
@@ -865,6 +902,7 @@ fx.charFn = function (char, attributes, time, charIndex)
     local speed = tonumber(attributes.speed) or 1
 
     char.xOffset = char.xOffset + math.sin((time * speed * 10) - (charIndex / 2)) * amount
+    return "update"
 end
 
 fx = marker.registerEffect("corrupt")
@@ -878,7 +916,7 @@ fx.charFn = function (char, attributes, time, charIndex)
     local charsLen = utf8.len(chars) or 0
     if charsLen == 0 then
         char.renderedStr = ""
-        return
+        return "update"
     end
 
     local progress = math.floor(time * 20 * speed)
@@ -887,6 +925,8 @@ fx.charFn = function (char, attributes, time, charIndex)
 
     local pickedCharIndex = math.random(1, charsLen)
     char.renderedStr = string.sub(chars, utf8.offset(chars, pickedCharIndex), utf8.offset(chars, pickedCharIndex+1)-1)
+
+    return "update"
 end
 
 fx = marker.registerEffect("redact")
