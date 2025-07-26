@@ -961,18 +961,12 @@ end
 --- This may grow the view, but will never shrink it (extra chars will only ever be set to an empty string).
 ---@param newText string
 function EffectCharView:replaceContents(newText)
-    -- TODO: possibly do an optimisation where
-    -- you loop through the newText and check if
-    -- the strings are already set to the correct ones
-    -- and that the effects are reset and stuff,
-    -- and early return here if so
+    local contentsChanged = false
 
     local indexFirst = self._indexFirst
     local indexLast = self._indexLast
     local chars = self._chars
 
-    local keptFont = chars[indexFirst].font
-    local keptEffects = chars[indexFirst].effects
     local nextIndex = indexFirst
 
     local newTextLen = utf8.len(newText)
@@ -987,19 +981,21 @@ function EffectCharView:replaceContents(newText)
         local char = chars[nextIndex]
         nextIndex = nextIndex + 1
 
-        -- Reset the char in the view and set its text
+        contentsChanged = contentsChanged or (char.str ~= charStr)
         char.str = charStr
-        char.font = keptFont
-        char:resetVisuals()
-        for effectIndex = 1, math.max(#keptEffects, #char.effects) do
-            char.effects[effectIndex] = keptEffects[effectIndex] -- Will return nil for indices too high (which will clear out any nested (unwanted) effects)
-        end
 
         -- If we've run out of chars in view and need more, expand it by adding a char
         if nextIndex > indexLast and pos < newTextLen then
+            contentsChanged = true
+
+            local newChar = marker.newEffectChar("", char.xPlacement, char.yPlacement, char.font)
+            for effectIndex = 1, #char.effects do
+                newChar.effects[effectIndex] = char.effects[effectIndex]
+            end
+
             -- This one-by-one `table.insert`ing will be slow as hell but it won't happen every time,
             -- future calls will generally have the necessary amount of characters after growing once.
-            table.insert(chars, nextIndex, marker.newEffectChar("", char.xPlacement, char.yPlacement, keptFont))
+            table.insert(chars, nextIndex, newChar)
             indexLast = indexLast + 1
             self._indexLast = indexLast
         end
@@ -1007,17 +1003,12 @@ function EffectCharView:replaceContents(newText)
 
     for clearedCharIndex = nextIndex, indexLast do
         local char = chars[clearedCharIndex]
-        char.str = ""
 
-        -- duplicate code bc i'm too lazy to rethink this function atp :3
-        char.font = keptFont
-        char:resetVisuals()
-        for effectIndex = 1, math.max(#keptEffects, #char.effects) do
-            char.effects[effectIndex] = keptEffects[effectIndex]
-        end
+        contentsChanged = contentsChanged or (char.str ~= "")
+        char.str = ""
     end
 
-    self._contentsWereReplaced = true
+    self._contentsWereReplaced = self._contentsWereReplaced or contentsChanged
 end
 
 -- Font stuff --------------------------------------------------------------------------------------
