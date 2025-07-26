@@ -479,7 +479,7 @@ function MarkedText:getWrap()
 
     local idealLineEnd ---@type integer?
     local charPrevious ---@type Marker.MarkedChar?
-    local shouldWrapOnNextChar = false
+    local wrapForcedOnNextChar = false
 
     local charIndex = 1
     local charsLength = #chars
@@ -496,7 +496,9 @@ function MarkedText:getWrap()
 
         char.disabled = false -- reset from possible previous getWrap call
 
-        if ((currentLineWidth + charWidthKerned <= wrapLimit) and (not shouldWrapOnNextChar)) or (not charPrevious) then
+        local charFits = (currentLineWidth + charWidthKerned <= wrapLimit) or (charWidthKerned <= 0)
+
+        if (charFits and (not wrapForcedOnNextChar)) or (not charPrevious) then
             currentLineWidth = currentLineWidth + charWidthKerned
             lineWidthSinceLastWrapPoint = lineWidthSinceLastWrapPoint + charWidthKerned
 
@@ -521,12 +523,12 @@ function MarkedText:getWrap()
             tallestLineChar = math.max(tallestLineChar, charHeight)
 
             charPrevious = char
-            shouldWrapOnNextChar = char:isLineEnding()
+            wrapForcedOnNextChar = char:isLineEnding()
 
             charIndex = charIndex + 1
         else
             -- Wrap on current char instead of last idealLineEnd for these cases:
-            if shouldWrapOnNextChar then idealLineEnd = nil end
+            if wrapForcedOnNextChar then idealLineEnd = nil end
             if char:isIdealWrapPoint() and char:isInvisibleInWrap() then idealLineEnd = nil end
 
             local lastLineEnd = idealLineEnd or (charIndex-1)
@@ -550,15 +552,16 @@ function MarkedText:getWrap()
                 lastLineHeight = math.max(lastLineHeight, lastLineEndChar:getHeight(true))
             end
 
+            -- line start char may only be invisible if the wrap wasn't forced by an explicit newline
             local nextLineStartChar = chars[charIndex]
-            if nextLineStartChar:isInvisibleInWrap() then
+            if nextLineStartChar:isInvisibleInWrap() and not wrapForcedOnNextChar then
                 nextLineStartChar.disabled = true
                 charIndex = charIndex + 1
             end
 
             charPrevious = nil
             idealLineEnd = nil
-            shouldWrapOnNextChar = false
+            wrapForcedOnNextChar = false
             currentLineWidth = 0
             lineWidthSinceLastWrapPoint = 0
             tallestLineChar = 0
@@ -924,7 +927,22 @@ marker.registerEffect("corrupt").charFn = function (char, attributes, time, char
     return "update"
 end
 
-marker.registerEffect("redact").stringFn = function (charView, attributes, time)
+marker.registerEffect("glue").stringFn = function (charView, attributes)
+    local text = attributes.repl or attributes.text or charView:getContentsAsString()
+
+    local contentsChanged = false
+    for charIndex = 1, charView:getLength() do
+        local char = charView:getChar(charIndex)
+        local str = charIndex == 1 and text or ""
+
+        contentsChanged = contentsChanged or (char.str ~= str)
+        char.str = str
+    end
+
+    if contentsChanged then return "layout" end
+end
+
+marker.registerEffect("redact").stringFn = function (charView, attributes)
     local replacementText = attributes.text or "[REDACTED]"
 
     charView:replaceContents(replacementText)
