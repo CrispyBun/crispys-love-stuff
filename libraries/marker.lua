@@ -817,33 +817,29 @@ function marker.registerEffect(effectName, effect)
 end
 
 -----
-local fx
 
-fx = marker.registerEffect("censor")
----@diagnostic disable-next-line: duplicate-set-field
-fx.charFn = function (char, attributes)
+marker.registerEffect("censor").charFn = function (char, attributes)
     local repl = attributes.repl or "*"
 
+    if not char:isSymbol() then return "none" end
+    if char:isSpace() then return "none" end
     if char.str == repl then return "none" end
+
     char.str = repl
     return "layout"
 end
 
-fx = marker.registerEffect("color")
----@diagnostic disable-next-line: duplicate-set-field
-fx.charFn = function (char, attributes)
+marker.registerEffect("color").charFn = function (char, attributes)
     char.color = attributes.value
 end
 
-fx = marker.registerEffect("shake")
----@diagnostic disable-next-line: duplicate-set-field
-fx.charFn = function (char, attributes, time, charIndex)
+marker.registerEffect("shake").charFn = function (char, attributes, time, charIndex)
     local amount = (tonumber(attributes.amount) or 1) * 4
-    local speed = (tonumber(attributes.speed) or 1)
+    local speed = (tonumber(attributes.speed) or 1) * 16
 
-    local progress = math.floor(time * 16 * speed)
+    local progress = math.floor(time * speed)
 
-    local charSeed = charIndex + progress
+    local charSeed = 100 * charIndex + progress
     math.randomseed(charSeed)
 
     local xOffset = (math.random() - 0.5) * amount + 0.5
@@ -854,13 +850,11 @@ fx.charFn = function (char, attributes, time, charIndex)
     return "update"
 end
 
-fx = marker.registerEffect("wiggle")
----@diagnostic disable-next-line: duplicate-set-field
-fx.charFn = function (char, attributes, time, charIndex)
+marker.registerEffect("wiggle").charFn = function (char, attributes, time, charIndex)
     local amount = (tonumber(attributes.amount) or 1) * 5
-    local speed = (tonumber(attributes.speed) or 1)
+    local speed = (tonumber(attributes.speed) or 1) * 16
 
-    local progressFine = time * 16 * speed
+    local progressFine = time * speed
     local progress = math.floor(progressFine)
     local progressFract = progressFine % 1
 
@@ -885,33 +879,34 @@ fx.charFn = function (char, attributes, time, charIndex)
     return "update"
 end
 
-fx = marker.registerEffect("wave")
----@diagnostic disable-next-line: duplicate-set-field
-fx.charFn = function (char, attributes, time, charIndex)
+marker.registerEffect("wave").charFn = function (char, attributes, time, charIndex)
     local amount = (tonumber(attributes.amount) or 1) * 5
-    local speed = tonumber(attributes.speed) or 1
+    local speed = (tonumber(attributes.speed) or 1) * 10
+    local wavelength = (tonumber(attributes.wavelength) or 1) * 2
 
-    char.yOffset = char.yOffset + math.sin((time * speed * 10) - (charIndex / 2)) * amount
+    if wavelength == 0 then return "update" end
+
+    char.yOffset = char.yOffset + math.sin((time * speed) - (charIndex / wavelength)) * amount
     return "update"
 end
 
-fx = marker.registerEffect("harmonica")
----@diagnostic disable-next-line: duplicate-set-field
-fx.charFn = function (char, attributes, time, charIndex)
+marker.registerEffect("harmonica").charFn = function (char, attributes, time, charIndex)
     local amount = (tonumber(attributes.amount) or 1) * 5
-    local speed = tonumber(attributes.speed) or 1
+    local speed = (tonumber(attributes.speed) or 1) * 10
+    local wavelength = (tonumber(attributes.wavelength) or 1) * 2
 
-    char.xOffset = char.xOffset + math.sin((time * speed * 10) - (charIndex / 2)) * amount
+    if wavelength == 0 then return "update" end
+
+    char.xOffset = char.xOffset + math.sin((time * speed) - (charIndex / wavelength)) * amount
     return "update"
 end
 
-fx = marker.registerEffect("corrupt")
----@diagnostic disable-next-line: duplicate-set-field
-fx.charFn = function (char, attributes, time, charIndex)
-    if not char:isSymbol() then return end
-
-    local speed = tonumber(attributes.speed) or 1
+marker.registerEffect("corrupt").charFn = function (char, attributes, time, charIndex)
+    local speed = (tonumber(attributes.speed) or 1) * 20
     local chars = attributes.chars or "#$%&@=*?!"
+
+    if not char:isSymbol() then return "update" end
+    if char:isSpace() then return "update" end
 
     local charsLen = utf8.len(chars) or 0
     if charsLen == 0 then
@@ -919,7 +914,7 @@ fx.charFn = function (char, attributes, time, charIndex)
         return "update"
     end
 
-    local progress = math.floor(time * 20 * speed)
+    local progress = math.floor(time * speed)
     local charSeed = 100 * charIndex + progress
     math.randomseed(charSeed)
 
@@ -929,12 +924,19 @@ fx.charFn = function (char, attributes, time, charIndex)
     return "update"
 end
 
-fx = marker.registerEffect("redact")
----@diagnostic disable-next-line: duplicate-set-field
-fx.stringFn = function (charView, attributes, time)
+marker.registerEffect("redact").stringFn = function (charView, attributes, time)
     local replacementText = attributes.text or "[REDACTED]"
 
     charView:replaceContents(replacementText)
+end
+
+marker.registerEffect("counter").stringFn = function (charView, attributes, time)
+    local start = tonumber(attributes.start) or 0
+    local speed = tonumber(attributes.speed) or 1
+    local step = tonumber(attributes.step) or 1
+
+    local count = start + math.floor(time * speed) * step
+    charView:replaceContents(tostring(count))
 end
 
 -- CharView ----------------------------------------------------------------------------------------
