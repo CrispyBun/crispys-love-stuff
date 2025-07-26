@@ -68,8 +68,8 @@ local MarkedChar = {}
 local MarkedCharMT = {__index = MarkedChar}
 
 ---@class Marker.Effect
----@field charFn? fun(char: Marker.MarkedChar, attributes: table<string, string?>, time: number, charIndex: integer): Marker.EffectReturnKeyword? Receives each char the effect affects.
----@field stringFn? fun(charView: Marker.MarkedCharView, attributes: table<string, string?>, time: number): Marker.EffectReturnKeyword? Receives a view for each continuous chain of chars the effect affects.
+---@field charFn? fun(char: Marker.MarkedChar, attributes: table<string, string?>, info: Marker.MarkedTextEffectInfo): Marker.EffectReturnKeyword? Receives each char the effect affects.
+---@field stringFn? fun(charView: Marker.MarkedCharView, attributes: table<string, string?>, info: Marker.MarkedTextEffectInfo): Marker.EffectReturnKeyword? Receives a view for each continuous chain of chars the effect affects.
 ---@field textFn? nil TODO: Gets the entire MarkedText
 local Effect = {}
 local EffectMT = {__index = Effect}
@@ -85,6 +85,12 @@ local EffectMT = {__index = Effect}
 ---|'"update"' # The effect is requesting another update next frame
 ---|'"layout"' # The effect made structural changes to the text and is requesting a layout to happen
 ---|'"layout+update"' # Requests both a layout to happen now and an update to happen next frame
+
+--- Info passed to effects about the text and current char relative to the effect
+---@class Marker.MarkedTextEffectInfo
+---@field charIndex integer The index of the char currently being processed.
+---@field symbolIndex? integer Like charIndex, but chars that aren't symbols (empty string, control characters) don't add to this index. This is only available for char scope functions.
+---@field time number The time value (in seconds) set in the text object.
 
 ---@class Marker.MarkedCharView
 ---@field private _indexFirst integer
@@ -401,11 +407,16 @@ end
 --- Used internally.
 function MarkedText:processEffects()
     local chars = self.chars
-    local time = self.time
 
     local charView = marker.newMarkedCharView(chars, 1, 1)
     local updateRequested = false
     local layoutRequested = false
+
+    ---@type Marker.MarkedTextEffectInfo
+    local effectInfo = {
+        charIndex = 0,
+        time = self.time,
+    }
 
     -- First pass - reset visuals and apply string scope effects
     for charIndex = #chars, 1, -1 do
@@ -423,7 +434,10 @@ function MarkedText:processEffects()
 
             if effect and effect.stringFn and self:isEffectStartIndex(charIndex, effectIndex) then
                 charView:_init(chars, charIndex, self:findEffectEndIndex(charIndex, effectIndex))
-                local fxRet = effect.stringFn(charView, effectData.attributes, time)
+                effectInfo.charIndex = charIndex
+                effectInfo.time = self.time
+
+                local fxRet = effect.stringFn(charView, effectData.attributes, effectInfo)
 
                 updateRequested = updateRequested or (fxRet == "update" or fxRet == "layout+update")
                 layoutRequested = layoutRequested or (fxRet == "layout" or fxRet == "layout+update")
@@ -434,9 +448,12 @@ function MarkedText:processEffects()
     end
 
     -- Second pass - apply char scope effects
+    local symbolIndex = 0
     for charIndex = 1, #chars do
         local char = chars[charIndex]
         local effects = char.effects
+
+        symbolIndex = symbolIndex + (char:isSymbol() and 1 or 0)
 
         for effectIndex = 1, #effects do
             local effectData = effects[effectIndex]
@@ -444,7 +461,12 @@ function MarkedText:processEffects()
             local effect = marker.registeredEffects[effectName]
 
             if effect and effect.charFn then
-                local fxRet = effect.charFn(char, effectData.attributes, time, charIndex)
+                effectInfo.charIndex = charIndex
+                effectInfo.symbolIndex = symbolIndex
+                effectInfo.time = self.time
+
+                local fxRet = effect.charFn(char, effectData.attributes, effectInfo)
+
                 updateRequested = updateRequested or (fxRet == "update" or fxRet == "layout+update")
                 layoutRequested = layoutRequested or (fxRet == "layout" or fxRet == "layout+update")
             end
@@ -836,13 +858,13 @@ marker.registerEffect("color").charFn = function (char, attributes)
     char.color = attributes.value
 end
 
-marker.registerEffect("shake").charFn = function (char, attributes, time, charIndex)
+marker.registerEffect("shake").charFn = function (char, attributes, info)
     local amount = (tonumber(attributes.amount) or 1) * 4
     local speed = (tonumber(attributes.speed) or 1) * 16
 
-    local progress = math.floor(time * speed)
+    local progress = math.floor(info.time * speed)
 
-    local charSeed = 100 * charIndex + progress
+    local charSeed = 100 * info.charIndex + progress
     math.randomseed(charSeed)
 
     local xOffset = (math.random() - 0.5) * amount + 0.5
@@ -853,15 +875,18 @@ marker.registerEffect("shake").charFn = function (char, attributes, time, charIn
     return "update"
 end
 
-marker.registerEffect("wiggle").charFn = function (char, attributes, time, charIndex)
+marker.registerEffect("wiggle").charFn = function (char, attributes, info)
     local amount = (tonumber(attributes.amount) or 1) * 5
     local speed = (tonumber(attributes.speed) or 1) * 16
+
+    local time = info.time
+    local symbolIndex = info.symbolIndex or 0
 
     local progressFine = time * speed
     local progress = math.floor(progressFine)
     local progressFract = progressFine % 1
 
-    local charSeed = charIndex + progress
+    local charSeed = symbolIndex + progress
 
     math.randomseed(charSeed)
     local xTarget = (math.random() - 0.5) * amount + 0.5
@@ -882,29 +907,35 @@ marker.registerEffect("wiggle").charFn = function (char, attributes, time, charI
     return "update"
 end
 
-marker.registerEffect("wave").charFn = function (char, attributes, time, charIndex)
+marker.registerEffect("wave").charFn = function (char, attributes, info)
     local amount = (tonumber(attributes.amount) or 1) * 5
     local speed = (tonumber(attributes.speed) or 1) * 10
     local wavelength = (tonumber(attributes.wavelength) or 1) * 2
 
+    local time = info.time
+    local symbolIndex = info.symbolIndex or 0
+
     if wavelength == 0 then return "update" end
 
-    char.yOffset = char.yOffset + math.sin((time * speed) - (charIndex / wavelength)) * amount
+    char.yOffset = char.yOffset + math.sin((time * speed) - (symbolIndex / wavelength)) * amount
     return "update"
 end
 
-marker.registerEffect("harmonica").charFn = function (char, attributes, time, charIndex)
+marker.registerEffect("harmonica").charFn = function (char, attributes, info)
     local amount = (tonumber(attributes.amount) or 1) * 5
     local speed = (tonumber(attributes.speed) or 1) * 10
     local wavelength = (tonumber(attributes.wavelength) or 1) * 2
 
+    local time = info.time
+    local symbolIndex = info.symbolIndex or 0
+
     if wavelength == 0 then return "update" end
 
-    char.xOffset = char.xOffset + math.sin((time * speed) - (charIndex / wavelength)) * amount
+    char.xOffset = char.xOffset + math.sin((time * speed) - (symbolIndex / wavelength)) * amount
     return "update"
 end
 
-marker.registerEffect("corrupt").charFn = function (char, attributes, time, charIndex)
+marker.registerEffect("corrupt").charFn = function (char, attributes, info)
     local speed = (tonumber(attributes.speed) or 1) * 20
     local chars = attributes.chars or "#$%&@=*?!"
 
@@ -917,8 +948,8 @@ marker.registerEffect("corrupt").charFn = function (char, attributes, time, char
         return "update"
     end
 
-    local progress = math.floor(time * speed)
-    local charSeed = 100 * charIndex + progress
+    local progress = math.floor(info.time * speed)
+    local charSeed = 100 * info.charIndex + progress
     math.randomseed(charSeed)
 
     local pickedCharIndex = math.random(1, charsLen)
@@ -948,12 +979,12 @@ marker.registerEffect("redact").stringFn = function (charView, attributes)
     charView:replaceContents(replacementText)
 end
 
-marker.registerEffect("counter").stringFn = function (charView, attributes, time)
+marker.registerEffect("counter").stringFn = function (charView, attributes, info)
     local start = tonumber(attributes.start) or 0
     local speed = tonumber(attributes.speed) or 1
     local step = tonumber(attributes.step) or 1
 
-    local count = start + math.floor(time * speed) * step
+    local count = start + math.floor(info.time * speed) * step
     charView:replaceContents(tostring(count))
 end
 
