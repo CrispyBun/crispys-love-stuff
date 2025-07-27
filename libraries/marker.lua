@@ -71,7 +71,7 @@ local MarkedCharMT = {__index = MarkedChar}
 ---@class Marker.Effect
 ---@field charFn? fun(char: Marker.MarkedChar, attributes: table<string, string?>, info: Marker.MarkedTextEffectInfo): Marker.EffectReturnKeyword? Receives each char the effect affects.
 ---@field stringFn? fun(charView: Marker.MarkedCharView, attributes: table<string, string?>, info: Marker.MarkedTextEffectInfo): Marker.EffectReturnKeyword? Receives a view for each continuous chain of chars the effect affects.
----@field textFn? nil TODO: Gets the entire MarkedText
+---@field textFn? fun(text: Marker.MarkedText): Marker.EffectReturnKeyword? Gets the entire text (if the effect is present at least once in it), after all other effect processing is done.
 local Effect = {}
 local EffectMT = {__index = Effect}
 
@@ -417,6 +417,7 @@ end
 function MarkedText:processEffects()
     local chars = self.chars
 
+    local textScopeFunctions = {}
     local charView = marker.newMarkedCharView(chars, 1, 1)
     local updateRequested = false
     local layoutRequested = false
@@ -458,7 +459,7 @@ function MarkedText:processEffects()
         end
     end
 
-    -- Second pass - apply char scope effects
+    -- Second pass - apply char scope effects and gather text scope effects
     local symbolIndex = 0
     for charIndex = 1, #chars do
         local char = chars[charIndex]
@@ -482,7 +483,28 @@ function MarkedText:processEffects()
                 updateRequested = updateRequested or (fxRet == "update" or fxRet == "layout+update")
                 layoutRequested = layoutRequested or (fxRet == "layout" or fxRet == "layout+update")
             end
+
+            if effect and effect.textFn then
+                local alreadyAdded = false
+                for fnIndex = 1, #textScopeFunctions do
+                    if textScopeFunctions[fnIndex] == effect.textFn then
+                        alreadyAdded = true
+                        break
+                    end
+                end
+                if not alreadyAdded then
+                    textScopeFunctions[#textScopeFunctions+1] = effect.textFn
+                end
+            end
         end
+    end
+
+    -- Now just apply text scope effects
+    for fnIndex = 1, #textScopeFunctions do
+        local fxRet = textScopeFunctions[fnIndex](self)
+
+        updateRequested = updateRequested or (fxRet == "update" or fxRet == "layout+update")
+        layoutRequested = layoutRequested or (fxRet == "layout" or fxRet == "layout+update")
     end
 
     self.updateRequested = self.updateRequested or updateRequested
@@ -797,6 +819,23 @@ end
 function MarkedChar:setPlacement(x, y)
     self.xPlacement = x
     self.yPlacement = y
+end
+
+--- Returns the attributes of the specified effect on the char, or `nil` if the effect isn't present on this char.
+--- If the effect is applied multiple times on this char, the topmost (most recently added) effect's attributes get returned.
+---@param effectName string
+---@return table<string, string?>?
+function MarkedChar:getEffectAttributes(effectName)
+    local effects = self.effects
+
+    for effectIndex = #effects, 1, -1 do
+        local effectData = effects[effectIndex]
+        if effectData.name == effectName then
+            return effectData.attributes
+        end
+    end
+
+    return nil
 end
 
 --- Resets the properties of the char
