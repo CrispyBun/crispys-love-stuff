@@ -1048,6 +1048,39 @@ marker.registerEffect("var").stringFn = function (charView, attributes, info)
     return "update"
 end
 
+marker.registerEffect("typewriter").textFn = function (text)
+    local time = text.time
+    local chars = text.chars
+
+    local typingTime = 0
+
+    for charIndex = 1, #chars do
+        local char = chars[charIndex]
+        local charStr = char.str
+        local attributes = char:getEffectAttributes("typewriter")
+
+        local delay = attributes and (attributes.delay or 1) or 0
+        local speed = attributes and (attributes.speed or 1) or 1
+
+        delay = delay / 10 -- convert delay to something arbitrarily faster than seconds
+        delay = delay / speed
+
+        if char:isSpace() or (not char:isSymbol()) then
+            delay = 0
+        end
+        if charStr == "," or charStr == "." or charStr == ";" or charStr == ":" or charStr == "?" or charStr == "!" then
+            delay = delay * 2.5
+        end
+
+        if typingTime > time and attributes then
+            char.renderedStr = ""
+        end
+        typingTime = typingTime + delay
+    end
+
+    return "update"
+end
+
 -- CharView ----------------------------------------------------------------------------------------
 
 --- Creates a new CharView for viewing and editing a range of characters in a MarkedChar array.
