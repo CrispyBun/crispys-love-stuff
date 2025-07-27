@@ -766,6 +766,10 @@ function marker.newMarkedChar(str, x, y, font)
         xPlacement = x or 0,
         yPlacement = y or 0,
         font = font or marker.getDefaultFont(),
+        colorR = marker.defaultColor[1],
+        colorG = marker.defaultColor[2],
+        colorB = marker.defaultColor[3],
+        colorA = marker.defaultColor[4] or 1,
         xOffset = 0,
         yOffset = 0,
         disabled = false,
@@ -1081,8 +1085,11 @@ marker.registerEffect("counter").stringFn = function (charView, attributes, info
     local start = tonumber(attributes.start) or 0
     local speed = tonumber(attributes.speed) or 1
     local step = tonumber(attributes.step) or 1
+    local loop = tonumber(attributes.loop) or nil
 
     local count = start + math.floor(info.time * speed) * step
+    if loop then count = count % loop end
+
     charView:replaceContents(tostring(count))
     return "update"
 end
