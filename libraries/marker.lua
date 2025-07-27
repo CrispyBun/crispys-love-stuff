@@ -58,7 +58,10 @@ local MarkedTextMT = {__index = MarkedText}
 ---@field str string The string the char represents
 ---@field renderedStr? string The string the char will actually render to the screen instead of the assigned `str`. Gets reset each time text effects are about to be processed.
 ---@field font Marker.Font The font of the char
----@field color? string The color (from the colors table) of the char. Gets reset each time text effects are about to be processed.
+---@field colorR number The red component of the char's color.  Gets reset each time text effects are about to be processed.
+---@field colorG number The green component of the char's color.  Gets reset each time text effects are about to be processed.
+---@field colorB number The blue component of the char's color.  Gets reset each time text effects are about to be processed.
+---@field colorA number The alpha component of the char's color.  Gets reset each time text effects are about to be processed.
 ---@field xPlacement number The X coordinate of the char
 ---@field yPlacement number The Y coordinate of the char
 ---@field xOffset number Offset from the X coordinate. Gets reset each time text effects are about to be processed.
@@ -153,23 +156,24 @@ marker.textVariables = {}
 marker.textVariablesTextMT = {__index = marker.textVariables}
 
 --- Defined colors for chars. Can be overwritten with a completely different table.
----@type table<string, [number, number, number]?>
+---@type table<string, [number, number, number, number?]?>
 marker.colors = {
     red = {1, 0.1, 0.15},
     green = {0, 1, 0.1},
     blue = {0.2, 0.2, 1},
 }
 
+--- The color chars are initialized to. You can change this once before using the library but it shouldn't really be changed at runtime.
 marker.defaultColor = {1,1,1}
 
 --- This can be defined to handle chars using color names that aren't defined in the colors table.
---- This could, for example, look for the color in another table elsewhere.
----@type (fun(colorName: string): [number, number, number]?)?
+--- This could, for example, look for the color in another table elsewhere, or resolve assigned string hex color values.
+---@type (fun(colorName: string): [number, number, number, number?]?)?
 marker.resolveUnknownColor = nil
 
 --- Gets the color associated with the given color name, or if there is none, returns the default color.
 ---@param colorName string?
----@return [number, number, number]
+---@return [number, number, number, number?]
 function marker.getColor(colorName)
     if not colorName then return marker.defaultColor end
 
@@ -843,7 +847,10 @@ end
 --- 
 --- This is called automatically each time effects are about to be applied.
 function MarkedChar:resetVisuals()
-    self.color = nil
+    self.colorR = marker.defaultColor[1]
+    self.colorG = marker.defaultColor[2]
+    self.colorB = marker.defaultColor[3]
+    self.colorA = marker.defaultColor[4] or 1
     self.renderedStr = nil
     self.xOffset = 0
     self.yOffset = 0
@@ -858,13 +865,12 @@ function MarkedChar:draw(x, y)
     y = y or 0
 
     local str = self.renderedStr or self.str
-    local color = marker.getColor(self.color)
 
     local drawnX = math.floor(x + self.xPlacement + self.xOffset)
     local drawnY = math.floor(y + self.yPlacement + self.yOffset)
 
     local cr, cg, cb, ca = love.graphics.getColor()
-    love.graphics.setColor(color)
+    love.graphics.setColor(self.colorR, self.colorG, self.colorB, self.colorA)
     self.font:draw(str, drawnX, drawnY)
     love.graphics.setColor(cr, cg, cb, ca)
 end
@@ -906,7 +912,16 @@ marker.registerEffect("censor").charFn = function (char, attributes)
 end
 
 marker.registerEffect("color").charFn = function (char, attributes)
-    char.color = attributes.value
+    local color = marker.getColor(attributes.value)
+    char.colorR = color[1]
+    char.colorG = color[2]
+    char.colorB = color[3]
+    char.colorA = color[4] or 1
+end
+
+marker.registerEffect("opacity").charFn = function (char, attributes)
+    local value = tonumber(attributes.value) or 1
+    char.colorA = char.colorA * value
 end
 
 marker.registerEffect("shake").charFn = function (char, attributes, info)
