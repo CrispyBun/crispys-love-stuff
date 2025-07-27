@@ -183,6 +183,20 @@ function marker.getColor(colorName)
     return color or marker.defaultColor
 end
 
+--- Takes in an attribute and returns `true` unless the attribute is unset or a falsy keyword.
+---@param attribute string?
+---@return boolean
+function marker.attributeToBool(attribute)
+    if not attribute then return false end
+    if attribute == "" then return false end
+
+    attribute = string.lower(attribute)
+    if attribute == "false" then return false end
+    if attribute == "off" then return false end
+
+    return true
+end
+
 -- MarkedText --------------------------------------------------------------------------------------
 
 --- Creates a new fancy MarkedText object
@@ -826,20 +840,24 @@ function MarkedChar:setPlacement(x, y)
 end
 
 --- Returns the attributes of the specified effect on the char, or `nil` if the effect isn't present on this char.
---- If the effect is applied multiple times on this char, the topmost (most recently added) effect's attributes get returned.
+--- If the effect is applied multiple times on this char, each attribute will keep its most recently set value.
 ---@param effectName string
 ---@return table<string, string?>?
 function MarkedChar:getEffectAttributes(effectName)
     local effects = self.effects
+    local attributes
 
-    for effectIndex = #effects, 1, -1 do
+    for effectIndex = 1, #effects do
         local effectData = effects[effectIndex]
         if effectData.name == effectName then
-            return effectData.attributes
+            attributes = attributes or {}
+            for key, value in pairs(effectData.attributes) do
+                attributes[key] = value
+            end
         end
     end
 
-    return nil
+    return attributes
 end
 
 --- Resets the properties of the char
@@ -1074,12 +1092,18 @@ marker.registerEffect("typewriter").textFn = function (text)
         local charStr = char.str
         local attributes = char:getEffectAttributes("typewriter")
 
+        -- Collect attributes
         local delay = attributes and (attributes.delay or 1) or 0
         local speed = attributes and (attributes.speed or 1) or 1
+        local fadein = attributes and marker.attributeToBool(attributes.fadein) or false
+        local fadetime = attributes and (attributes.fadetime or 1) or 1
 
-        delay = delay / 10 -- convert delay to something arbitrarily faster than seconds
+        -- convert attributes to arbitrary better looking units
+        delay = delay / 10
+
         delay = delay / speed
 
+        -- Tweak delay based on character string
         if char:isSpace() or (not char:isSymbol()) then
             delay = 0
         end
@@ -1087,6 +1111,15 @@ marker.registerEffect("typewriter").textFn = function (text)
             delay = delay * 2.5
         end
 
+        -- Special effects
+        local charTypeProgress = (time - typingTime) / (delay * fadetime)
+        charTypeProgress = math.min(math.max(charTypeProgress, 0), 1)
+
+        if fadein then
+            char.colorA = char.colorA * charTypeProgress
+        end
+
+        -- Hide not-yet-typed characters
         if typingTime > time and attributes then
             char.renderedStr = ""
         end
