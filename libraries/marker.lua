@@ -45,6 +45,7 @@ local marker = {}
 ---@field verticalAlign Marker.VerticalAlign The vertical alignment of the text
 ---@field alignBox [number, number] The reference textbox size ([x, y]) the text is aligned in
 ---@field font Marker.Font The font used to generate the text
+---@field timePrevious number The `time` value from the previous `update()`.
 ---@field inputString string The string used to generate the text
 ---@field chars Marker.MarkedChar[] The generated MarkedChars
 ---@field ignoreStretchOnLastLine boolean True by default, makes alignments like "justify" look much better on paragraph ending lines.
@@ -95,6 +96,7 @@ local EffectMT = {__index = Effect}
 ---@field charIndex integer The index of the char currently being processed.
 ---@field symbolIndex? integer Like charIndex, but chars that aren't symbols (empty string, control characters) don't add to this index. This is only available for char scope functions.
 ---@field time number The time value (in seconds) set in the text object.
+---@field timePrevious number The time value from the previous update
 ---@field textVariables table The `textVariables` field of the text object.
 
 ---@class Marker.MarkedCharView
@@ -154,6 +156,13 @@ marker.textVariables = {}
 
 --- The metatable assigned to `MarkedText.textVariables` tables so they default back to the root table.
 marker.textVariablesTextMT = {__index = marker.textVariables}
+
+--- A table in which some effects define callbacks in to be listened to by the program.
+marker.effectCallbacks = {}
+
+--- Called for every typed character by the typewriter effect, with the associated attributes for the effect at that char.
+---@type fun(char: Marker.MarkedChar, attributes: table<string, string?>)?
+marker.effectCallbacks.typewriter = nil
 
 --- Defined colors for chars. Can be overwritten with a completely different table.
 ---@type table<string, [number, number, number, number?]?>
@@ -226,6 +235,7 @@ function marker.newMarkedText(str, font, x, y, wrapLimit, textAlign)
         verticalAlign = "start",
         alignBox = {alignBoxWidth, 0},
         font = font or marker.getDefaultFont(),
+        timePrevious = 0,
         inputString = str or "",
         chars = {},
         ignoreStretchOnLastLine = true,
@@ -246,6 +256,7 @@ end
 ---@param dt? number
 function MarkedText:update(dt)
     dt = dt or 0
+    self.timePrevious = self.time
     self.time = self.time + dt
 
     if self.updateRequested then
@@ -444,6 +455,7 @@ function MarkedText:processEffects()
     local effectInfo = {
         charIndex = 0,
         time = self.time,
+        timePrevious = self.timePrevious,
         textVariables = self.textVariables
     }
 
@@ -465,6 +477,7 @@ function MarkedText:processEffects()
                 charView:_init(chars, charIndex, self:findEffectEndIndex(charIndex, effectIndex))
                 effectInfo.charIndex = charIndex
                 effectInfo.time = self.time
+                effectInfo.timePrevious = self.timePrevious
                 effectInfo.textVariables = self.textVariables
 
                 local fxRet = effect.stringFn(charView, effectData.attributes, effectInfo)
@@ -494,6 +507,7 @@ function MarkedText:processEffects()
                 effectInfo.charIndex = charIndex
                 effectInfo.symbolIndex = symbolIndex
                 effectInfo.time = self.time
+                effectInfo.timePrevious = self.timePrevious
                 effectInfo.textVariables = self.textVariables
 
                 local fxRet = effect.charFn(char, effectData.attributes, effectInfo)
@@ -1083,7 +1097,14 @@ end
 
 marker.registerEffect("typewriter").textFn = function (text)
     local time = text.time
+    local timePrevious = text.timePrevious
     local chars = text.chars
+
+    -- Delay the first character ever so slightly
+    -- so it's still typed and isn't present at time=0
+    local initialDelay = 1e-10
+    time = time - initialDelay
+    timePrevious = timePrevious - initialDelay
 
     local typingTime = 0
 
@@ -1093,14 +1114,13 @@ marker.registerEffect("typewriter").textFn = function (text)
         local attributes = char:getEffectAttributes("typewriter")
 
         -- Collect attributes
-        local delay = attributes and (attributes.delay or 1) or 0
-        local speed = attributes and (attributes.speed or 1) or 1
+        local delay = attributes and tonumber(attributes.delay) or 1
+        local speed = attributes and tonumber(attributes.speed) or 1
         local fadein = attributes and marker.attributeToBool(attributes.fadein) or false
-        local fadetime = attributes and (attributes.fadetime or 1) or 1
+        local fadetime = attributes and tonumber(attributes.fadetime) or 1
 
-        -- convert attributes to arbitrary better looking units
+        -- convert attributes to arbitrary better looking units + apply speed modifier
         delay = delay / 10
-
         delay = delay / speed
 
         -- Tweak delay based on character string
@@ -1119,11 +1139,15 @@ marker.registerEffect("typewriter").textFn = function (text)
             char.colorA = char.colorA * charTypeProgress
         end
 
-        -- Hide not-yet-typed characters
-        if typingTime > time and attributes then
-            char.renderedStr = ""
+        -- Type n stuff
+        if attributes then
+            if typingTime > time then
+                char.renderedStr = ""
+            elseif typingTime > timePrevious and marker.effectCallbacks.typewriter then
+                marker.effectCallbacks.typewriter(char, attributes)
+            end
+            typingTime = typingTime + delay
         end
-        typingTime = typingTime + delay
     end
 
     return "update"
