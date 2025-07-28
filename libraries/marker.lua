@@ -121,6 +121,7 @@ local LoveFontMT = {__index = LoveFont}
 ---@class Marker.WrapInfo
 ---@field lineIndices number[] Alternating start and end indices of each line (line1start, line1end, line2start, line2end, ...)
 ---@field lineWidths number[] The width of each line
+---@field lineHeights number[] The height of each line
 ---@field textHeight number The height of the whole text
 ---@field spaceCounts number[] The amount of space chars in each line
 ---@field symbolCounts number[] The amount of renderable non-special symbols in each line
@@ -350,6 +351,7 @@ function MarkedText:layout()
 
     local lineIndices = wrapInfo.lineIndices
     local lineWidths = wrapInfo.lineWidths
+    local lineHeights = wrapInfo.lineHeights
     local textHeight = wrapInfo.textHeight
     local spaceCounts = wrapInfo.spaceCounts
     local symbolCounts = wrapInfo.symbolCounts
@@ -377,6 +379,7 @@ function MarkedText:layout()
         local lineEndCharIndex = lineIndices[lineIndex*2]
 
         local lineWidth = lineWidths[lineIndex]
+        local lineHeight = lineHeights[lineIndex]
         local spaceCount = spaceCounts[lineIndex]
         local symbolCount = symbolCounts[lineIndex]
         local lastCharIsLineEnd = chars[lineEndCharIndex]:isLineEnding()
@@ -394,8 +397,6 @@ function MarkedText:layout()
             spaceStretch = 0
             symbolCount = 0
         end
-
-        local tallestCharHeight = 0
 
         local seenSymbols = 0
 
@@ -427,17 +428,28 @@ function MarkedText:layout()
             nextX = nextX + kerning
             nextX = nextX + extraSpacingLeft
 
-            char:setPlacement(nextX, nextY)
+            local placementOffsetX = 0
+            local placementOffsetY = 0
+
+            -- This approach looks really bad on mixed font sizes,
+            -- mixed font baselines and mixed font line heights.
+            -- What really should be done is have getWrap() determine line
+            -- heights based on the highest ascent + highest descent value of the fonts,
+            -- as well as return a table containing the baseline for each line. But,
+            -- since I'm only really planning on using simple fonts with
+            -- all line heights set to 1, I really don't care that much right now.
+            placementOffsetY = placementOffsetY + (lineHeight - charHeight)
+
+            char:setPlacement(nextX + placementOffsetX, nextY + placementOffsetY)
 
             nextX = nextX + charWidth
             nextX = nextX + extraSpacingRight
-            tallestCharHeight = math.max(tallestCharHeight, charHeight)
 
             charPrevious = char
         end
 
         nextX = 0
-        nextY = nextY + tallestCharHeight
+        nextY = nextY + lineHeight
     end
 end
 
@@ -551,6 +563,7 @@ function MarkedText:getWrap()
 
     local lineIndices = { 1 }
     local lineWidths = {}
+    local lineHeights = {}
     local spaceCounts = {}
     local symbolCounts = {}
     local textHeight = 0
@@ -628,6 +641,8 @@ function MarkedText:getWrap()
             local lastLineSymbolCount = currentSymbolCount - (idealLineEnd and lineSymbolCountSinceLastWrapPoint or 0)
 
             local lastLineEndChar = chars[lastLineEnd]
+
+            -- If the wrapped char becomes invisible (if it's the only char on the line, it can't)
             if lastLineEndChar:isInvisibleInWrap() and lineIndices[#lineIndices] < lastLineEnd then
                 local lastLineEndCharWidth = lastLineEndChar:getWidth() + chars[lastLineEnd-1]:getKerning(lastLineEndChar)
                 lastLineWidth = lastLineWidth - lastLineEndCharWidth
@@ -663,6 +678,7 @@ function MarkedText:getWrap()
             lineIndices[#lineIndices+1] = lastLineEnd
             lineIndices[#lineIndices+1] = charIndex
             lineWidths[#lineWidths+1] = lastLineWidth
+            lineHeights[#lineHeights+1] = lastLineHeight
             spaceCounts[#spaceCounts+1] = lastLineSpaceCount
             symbolCounts[#symbolCounts+1] = lastLineSymbolCount
             textHeight = textHeight + lastLineHeight
@@ -671,6 +687,7 @@ function MarkedText:getWrap()
 
     lineIndices[#lineIndices+1] = #chars
     lineWidths[#lineWidths+1] = currentLineWidth
+    lineHeights[#lineHeights+1] = tallestLineChar
     spaceCounts[#spaceCounts+1] = currentSpaceCount
     symbolCounts[#symbolCounts+1] = currentSymbolCount
     textHeight = textHeight + tallestLineChar
@@ -681,6 +698,7 @@ function MarkedText:getWrap()
         lineIndices[#lineIndices] = nil
         lineIndices[#lineIndices] = nil
         lineWidths[#lineWidths] = nil
+        lineHeights[#lineHeights] = nil
         spaceCounts[#spaceCounts] = nil
         symbolCounts[#symbolCounts] = nil
         textHeight = textHeight - tallestLineChar
@@ -690,6 +708,7 @@ function MarkedText:getWrap()
     local out = {
         lineIndices = lineIndices,
         lineWidths = lineWidths,
+        lineHeights = lineHeights,
         textHeight = textHeight,
         spaceCounts = spaceCounts,
         symbolCounts = symbolCounts
