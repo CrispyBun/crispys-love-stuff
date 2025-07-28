@@ -48,6 +48,8 @@ local marker = {}
 ---@field timePrevious number The `time` value from the previous `update()`.
 ---@field inputString string The string used to generate the text
 ---@field chars Marker.MarkedChar[] The generated MarkedChars
+---@field effectAllowlist table<string, boolean>? If set, only the effects in this allowlist will be processed.
+---@field parsingEnabed boolean Whether or not effect <tags> will be parsed from the input string when `generate` is called.
 ---@field ignoreStretchOnLastLine boolean True by default, makes alignments like "justify" look much better on paragraph ending lines.
 ---@field updateRequested boolean If true, the text re-apply all its effects to the text on the next call to `update()` and reset this value back to `false`. May be set to true by some effects.
 ---@field layoutRequested boolean If true, the text will call `layout()` on the next call to `update()` and reset this value back to `false`. May be set to true by some effects.
@@ -225,7 +227,7 @@ function marker.newMarkedText(str, font, x, y, wrapLimit, textAlign)
 
     local alignBoxWidth = (wrapLimit and wrapLimit ~= math.huge) and wrapLimit or 0
 
-    -- new Marker.MarkedText
+    ---@type Marker.MarkedText
     local markedText = {
         x = x or 0,
         y = y or 0,
@@ -235,10 +237,12 @@ function marker.newMarkedText(str, font, x, y, wrapLimit, textAlign)
         textAlign = textAlign or "start",
         verticalAlign = "start",
         alignBox = {alignBoxWidth, 0},
+        ---@diagnostic disable-next-line: assign-type-mismatch
         font = font or marker.getDefaultFont(),
         timePrevious = 0,
         inputString = str or "",
         chars = {},
+        parsingEnabed = true,
         ignoreStretchOnLastLine = true,
         updateRequested = false,
         layoutRequested = false,
@@ -279,6 +283,11 @@ function MarkedText:setPosition(x, y)
     self.y = y
 end
 
+--- Will make the text call `layout()` on itself on the next update.
+function MarkedText:requestLayout()
+    self.layoutRequested = true
+end
+
 --- Sets the text's wrap limit. The layout must be updated for this to take effect.
 ---@param wrapLimit number
 function MarkedText:setWrapLimit(wrapLimit)
@@ -306,12 +315,14 @@ function MarkedText:setAlignBox(x, y)
 end
 
 --- Regenerates the entire MarkedText, optionally using a different input string.
---- If the input string is unchanged, it might be better to call `layout()` instead.
+--- If the actual text is unchanged, and all that's desired is an update to the layout,
+--- it might be better to call `layout()` instead.
 ---@param str? string
 function MarkedText:generate(str)
     str = str or self.inputString
     self.inputString = str
 
+    ---@type Marker.MarkedChar[]
     local markedChars = {}
 
     local font = self.font
@@ -323,7 +334,11 @@ function MarkedText:generate(str)
         markedChars[#markedChars+1] = markedChar
     end
 
-    self.chars = marker.parser.parse(markedChars)
+    if self.parsingEnabed then
+        self.chars = marker.parser.parse(markedChars)
+    else
+        self.chars = markedChars
+    end
 
     self:processEffects()
     self:layout()
@@ -395,7 +410,7 @@ function MarkedText:layout()
 
         if self.ignoreStretchOnLastLine and (lineIndex == #lineWidths or lastCharIsLineEnd) then
             spaceStretch = 0
-            symbolCount = 0
+            symbolStretch = 0
         end
 
         local seenSymbols = 0
@@ -457,6 +472,7 @@ end
 --- Used internally.
 function MarkedText:processEffects()
     local chars = self.chars
+    local effectAllowlist = self.effectAllowlist
 
     local textScopeFunctions = {}
     local charView = marker.newMarkedCharView(chars, 1, 1)
@@ -484,6 +500,10 @@ function MarkedText:processEffects()
             local effectData = effects[effectIndex]
             local effectName = effectData.name
             local effect = marker.registeredEffects[effectName]
+
+            if effectAllowlist and (not effectAllowlist[effectName]) then
+                effect = nil
+            end
 
             if effect and effect.stringFn and self:isEffectStartIndex(charIndex, effectIndex) then
                 charView:_init(chars, charIndex, self:findEffectEndIndex(charIndex, effectIndex))
@@ -514,6 +534,10 @@ function MarkedText:processEffects()
             local effectData = effects[effectIndex]
             local effectName = effectData.name
             local effect = marker.registeredEffects[effectName]
+
+            if effectAllowlist and (not effectAllowlist[effectName]) then
+                effect = nil
+            end
 
             if effect and effect.charFn then
                 effectInfo.charIndex = charIndex
@@ -940,7 +964,7 @@ function marker.newEffect()
     return setmetatable(effect, EffectMT)
 end
 
----@type table<string, Marker.Effect>
+---@type table<string, Marker.Effect?>
 marker.registeredEffects = {}
 
 --- Registers an effect, making it usable in MarkedTexts.
