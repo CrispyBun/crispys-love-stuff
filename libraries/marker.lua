@@ -49,7 +49,8 @@ local marker = {}
 ---@field inputString string The string used to generate the text
 ---@field chars Marker.MarkedChar[] The generated MarkedChars
 ---@field effectAllowlist table<string, boolean>? If set, only the effects in this allowlist will be processed.
----@field parsingEnabed boolean Whether or not effect <tags> will be parsed from the input string when `generate` is called.
+---@field topLevelEffects Marker.EffectData[] Effects in this list will be added to all generated chars when `generate()` is called. They can still be turned off by the input string with an appropriate closing tag (</*>) if parsing is enabled.
+---@field parsingEnabed boolean Whether or not effect <tags> will be parsed from the input string when `generate()` is called.
 ---@field ignoreStretchOnLastLine boolean True by default, makes alignments like "justify" look much better on paragraph ending lines.
 ---@field updateRequested boolean If true, the text re-apply all its effects to the text on the next call to `update()` and reset this value back to `false`. May be set to true by some effects.
 ---@field layoutRequested boolean If true, the text will call `layout()` on the next call to `update()` and reset this value back to `false`. May be set to true by some effects.
@@ -242,6 +243,7 @@ function marker.newMarkedText(str, font, x, y, wrapLimit, textAlign)
         timePrevious = 0,
         inputString = str or "",
         chars = {},
+        topLevelEffects = {},
         parsingEnabed = true,
         ignoreStretchOnLastLine = true,
         updateRequested = false,
@@ -331,11 +333,24 @@ function MarkedText:generate(str)
         local charStr = utf8.char(code)
 
         local markedChar = marker.newMarkedChar(charStr, 0, 0, font)
+
+        if not self.parsingEnabed then
+            for effectIndex = 1, #self.topLevelEffects do
+                markedChar.effects[effectIndex] = self.topLevelEffects[effectIndex]
+            end
+        end
+
         markedChars[#markedChars+1] = markedChar
     end
 
     if self.parsingEnabed then
-        self.chars = marker.parser.parse(markedChars)
+        local tagStack = {}
+
+        for effectIndex = 1, #self.topLevelEffects do
+            tagStack[effectIndex] = self.topLevelEffects[effectIndex]
+        end
+
+        self.chars = marker.parser.parse(markedChars, tagStack)
     else
         self.chars = markedChars
     end
@@ -1441,9 +1456,10 @@ end
 
 --- Parses and processes all tags in the given sequence of MarkedChars
 ---@param markedChars Marker.MarkedChar[]
+---@param tagStack? Marker.EffectData[]
 ---@return Marker.MarkedChar[]
-function marker.parser.parse(markedChars)
-    return marker.parser.parse_text(markedChars, 1, {}, {})
+function marker.parser.parse(markedChars, tagStack)
+    return marker.parser.parse_text(markedChars, 1, {}, tagStack or {})
 end
 
 ---@param markedChar Marker.MarkedChar
