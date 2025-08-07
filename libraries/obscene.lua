@@ -49,13 +49,15 @@ obscene.managerSetup = nil
 
 --- Events that can be called in the scene.  
 --- There are some built-in ones, but other custom ones can be injected into the class.
---- The first argument must always be the scene itself, the rest can be anything.
+--- The first argument must always be the scene itself,
+--- the second argument must always be the manager (may be nil if the scene is used without a manager),
+--- the rest can be anything.
 ---@class Obscene.SceneEvents
 ---@field register? fun(scene: Obscene.Scene, manager: Obscene.SceneManager) Called when the scene is registered into a manager (this is the only type of event that will trigger for inactive scenes)
 ---@field unregister? fun(scene: Obscene.Scene, manager: Obscene.SceneManager) Called when the scene is unregistered from a manager (this is the only type of event that will trigger for inactive scenes)
----@field init? fun(scene: Obscene.Scene) Called once when the scene is made active in a manager for the first time. Useful for setting up things in the scene that only ever need to be set up once.
----@field load? fun(scene: Obscene.Scene, ...) Called when the scene is selected to be active. Useful for setting up the scene and adding objects to it.
----@field unload? fun(scene: Obscene.Scene) Called when the active scene is switched from this one to a different one. Useful for destroying/resetting the scene and any objects inside it.
+---@field init? fun(scene: Obscene.Scene, manager: Obscene.SceneManager?) Called once when the scene is made active in a manager for the first time. Useful for setting up things in the scene that only ever need to be set up once.
+---@field load? fun(scene: Obscene.Scene, manager: Obscene.SceneManager?, ...) Called when the scene is selected to be active. Useful for setting up the scene and adding objects to it.
+---@field unload? fun(scene: Obscene.Scene, manager: Obscene.SceneManager?) Called when the active scene is switched from this one to a different one. Useful for destroying/resetting the scene and any objects inside it.
 
 ---@class Obscene.SceneManager
 ---@field currentScene? string The currently selected scene which will receive event callbacks
@@ -165,7 +167,7 @@ end
 --- Sets (or overwrites) the callback for the given event in the manager.  
 --- The callbacks can also be set directly, like so:
 --- ```lua
---- manager.callbacks.load = function(scene, ...)
+--- manager.callbacks.load = function(scene, manager, ...)
 ---     -- ...
 --- end
 --- ```
@@ -175,7 +177,9 @@ function SceneManager:setEventCallback(event, callback)
     self.callbacks[event] = callback
 end
 
---- Triggers the callbacks for the given event in the currently active scene (if one is active).  
+--- Triggers the callbacks for the given event in the currently active scene (if one is active).
+--- 
+--- Example usage:
 --- ```lua
 --- function love.update(dt)
 ---     manager:announce('update', dt)
@@ -193,8 +197,8 @@ function SceneManager:announce(event, ...)
         currentScene.initCalled = true
     end
 
-    if self.callbacks[event] then self.callbacks[event](currentScene, ...) end
-    return currentScene:announce(event, ...)
+    if self.callbacks[event] then self.callbacks[event](currentScene, self, ...) end
+    return currentScene:announce(event, self, ...)
 end
 SceneManager.callEvent = SceneManager.announce
 
@@ -224,7 +228,7 @@ end
 --- Sets (or overwrites) the callback for the given event in the scene.  
 --- The callbacks can also be set directly, like so:
 --- ```lua
---- scene.callbacks.load = function(scene, ...)
+--- scene.callbacks.load = function(scene, manager, ...)
 ---     -- ...
 --- end
 --- ```
@@ -242,12 +246,13 @@ end
 
 --- Triggers the callback for the given event in the scene.
 ---@param event string
+---@param manager? Obscene.SceneManager
 ---@param ... unknown
 ---@return unknown?
-function Scene:announce(event, ...)
+function Scene:announce(event, manager, ...)
     local callback = self.callbacks[event]
     if not callback then return end
-    return callback(self, ...)
+    return callback(self, manager, ...)
 end
 Scene.callEvent = Scene.announce
 
