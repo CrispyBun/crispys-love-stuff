@@ -115,6 +115,10 @@ function SceneManager:unregisterScene(name)
     if not self.scenes[name] then error("Scene '" .. tostring(name) .. "' does not exist in this manager", 2) end
     local scene = self.scenes[name]
 
+    if name == self.currentScene then
+        self:unsetScene()
+    end
+
     if self.callbacks.unregister then self.callbacks.unregister(scene, self) end
     if scene.callbacks.unregister then scene.callbacks.unregister(scene, self) end
 
