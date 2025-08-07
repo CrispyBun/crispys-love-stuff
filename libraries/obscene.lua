@@ -35,7 +35,7 @@ local obscene = {}
 obscene.sceneSetup = nil
 
 --- A function that can be implemented which is called for all newly created managers. Useful for setting up manager variables.
----@type fun(scene: Obscene.SceneManager)
+---@type fun(manager: Obscene.SceneManager)
 obscene.managerSetup = nil
 
 -- Types -------------------------------------------------------------------------------------------
