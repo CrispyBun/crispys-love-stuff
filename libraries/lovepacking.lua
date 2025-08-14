@@ -400,7 +400,7 @@ function PackingTree:pack()
         return nextTree
     end
 end
-PackingTree.calulate = PackingTree.pack
+PackingTree.calculate = PackingTree.pack
 
 --- Injects a texture into the first node it fits into. Used internally.  
 --- To add textures to be packed, use `PackingTree:addInputTexture()` instead.
