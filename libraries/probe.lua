@@ -59,12 +59,21 @@ local trees = {} ---@type Probe.TreeNode[]
 local snapshotsEnabled = true
 local snapshots = {} ---@type Probe.TreeNode[]
 
+local queuedStart ---@type string?
+
 --- Turns on profiling.
 --- 
 --- This must be called before the top-level section gets pushed
 --- as any pushes or pops are only registered if profiling is enabled.
 function probe.start()
     enabled = true
+    queuedStart = nil
+end
+
+--- Queues it so that the next time `sectionName` tries to be pushed, profiling will start.
+---@param sectionName string
+function probe.queueStart(sectionName)
+    queuedStart = sectionName
 end
 
 --- Stops profiling.
@@ -76,6 +85,11 @@ function probe.stop(clearMeasurements)
     for i = 1, #stack do
         stack[i] = nil
     end
+end
+
+---@return boolean
+function probe.isActive()
+    return enabled
 end
 
 --- Sets whether or not a snapshot of all measurements (stored as probe trees) should be made each time their root node pops.
@@ -113,6 +127,7 @@ end
 --- You can have multiple trees as long as their pushes and pops never overlap.
 ---@param sectionName string The name (and identifier) of the section of code that's being measured
 function probe.push(sectionName)
+    if sectionName == queuedStart then probe.start() end
     if not enabled then return end
 
     stack[#stack+1] = {
