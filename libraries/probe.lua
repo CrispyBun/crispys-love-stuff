@@ -245,7 +245,7 @@ function TreeNode:stringifySimpleHierarchy(maxDepth, _currentDepth, _parentTime)
 
     chunks[#chunks+1] = string.rep("  ", _currentDepth)
     chunks[#chunks+1] = self.sectionName
-    chunks[#chunks+1] = string.rep(" ", 15 - #self.sectionName)
+    chunks[#chunks+1] = string.rep(" ", math.max(1, 20 - #self.sectionName))
     chunks[#chunks+1] = "[Total time: "
     chunks[#chunks+1] = string.format("%.2f", self.totalTime)
     chunks[#chunks+1] = "; Avg. time: "
