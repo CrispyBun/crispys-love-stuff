@@ -230,7 +230,7 @@ function probe.newTreeNode(sectionName)
     return setmetatable(node, TreeNodeMT)
 end
 
---- Returns a string showing the most important data from the tree in a hierarchical way (with an optional max depth).
+--- Returns a string showing the most important data from the tree in a sorted hierarchical way (with an optional max depth).
 ---@param maxDepth? number
 ---@param _currentDepth? number
 ---@param _parentTime? number
@@ -257,16 +257,26 @@ function TreeNode:stringifySimpleHierarchy(maxDepth, _currentDepth, _parentTime)
 
         chunks[#chunks+1] = " ("
         chunks[#chunks+1] = string.format("%.2f", percent)
-        chunks[#chunks+1] = "% of parent's time)"
+        chunks[#chunks+1] = "% of parent)"
     end
 
     chunks[#chunks+1] = "\n"
 
+    self:sortChildren()
     for childIndex = 1, #self.children do
         chunks[#chunks+1] = self.children[childIndex]:stringifySimpleHierarchy(maxDepth, _currentDepth + 1, self.totalTime)
     end
 
     return table.concat(chunks)
+end
+
+local function compareNodes(a, b)
+    return a.totalTime > b.totalTime
+end
+
+--- Sorts the child nodes based on their measured time.
+function TreeNode:sortChildren()
+    table.sort(self.children, compareNodes)
 end
 
 --- Creates an identical clone of this node and all its children
