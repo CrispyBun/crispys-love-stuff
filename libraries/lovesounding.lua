@@ -1,0 +1,179 @@
+----------------------------------------------------------------------------------------------------
+-- A neat sfx and music manager for LÖVE,
+-- written by yours truly, CrispyBun.
+-- crispybun@pm.me
+----------------------------------------------------------------------------------------------------
+--[[
+MIT License
+
+Copyright (c) 2026 Ava "CrispyBun" Špráchalů
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+--]]
+----------------------------------------------------------------------------------------------------
+
+local sounding = {}
+
+--- This can be replaced to make the library use a different function for randomization
+--- (the function should behave the same way as the regular math.random function)
+---@type function
+sounding.randomFn = math.random
+
+-- Definitions -------------------------------------------------------------------------------------
+
+--- The shared interface for all types of sounds and music
+---@class Sounding.Audio
+local Audio = {}
+
+--- A basic sound effect
+---@class Sounding.Sound : Sounding.Audio
+---@field baseSource love.Source
+---@field sources love.Source[]
+---@field nextFreeSource integer
+---@field maxSources integer
+local Sound = {}
+local SoundMT = {__index = Sound}
+
+--- A sound effect that picks from a couple of sounds to play
+---@class Sounding.RandomizedSound : Sounding.Audio
+---@field sounds Sounding.Audio[]
+local RandomizedSound = {}
+local RandomizedSoundMT = {__index = RandomizedSound}
+
+-- Main interface ----------------------------------------------------------------------------------
+
+---@param soundId string
+function sounding.sfx(soundId)
+    error("NYI")
+end
+
+-- Sounds ------------------------------------------------------------------------------------------
+
+--- Creates a new SFX. Should be made from a static source.
+---@param source love.Source
+---@return Sounding.Sound
+function sounding.newSound(source)
+    ---@type Sounding.Sound
+    local sound = {
+        baseSource = source,
+        sources = {},
+        nextFreeSource = 1,
+        maxSources = 5,
+    }
+    return setmetatable(sound, SoundMT)
+end
+
+---@return integer
+function Sound:play()
+    local sources = self.sources
+
+    local nextFreeSource = self.nextFreeSource
+    local maxSources = self.maxSources
+
+    if nextFreeSource > maxSources then nextFreeSource = 1 end
+    if not sources[nextFreeSource] then
+        sources[nextFreeSource] = self.baseSource:clone()
+    end
+
+    local source = sources[nextFreeSource]
+    source:stop()
+    source:play()
+
+    self.nextFreeSource = nextFreeSource + 1
+    return nextFreeSource
+end
+
+function Sound:stopAll()
+    local sources = self.sources
+
+    for sourceIndex = 1, self.maxSources do
+        local source = sources[sourceIndex]
+        if source then source:stop() end
+    end
+end
+
+--- Sets how many clones of the base source can be created for this sfx at most
+---@param maxSources integer
+function Sound:setMaxSources(maxSources)
+    for sourceIndex = maxSources + 1, self.maxSources, 1 do
+        self.sources[sourceIndex] = nil
+    end
+
+    self.maxSources = maxSources
+end
+
+--- Creates all the source clones in advance
+function Sound:populateMaxSources()
+    local baseSource = self.baseSource
+    local sources = self.sources
+
+    for sourceIndex = 1, self.maxSources do
+        sources[sourceIndex] = baseSource:clone()
+    end
+
+    self.nextFreeSource = 1
+end
+
+--------------------------------------------------
+
+--- Creates a new sound for playing randomly from a set of different `sounding.Audio`s.
+---@param ... Sounding.Audio
+---@return Sounding.RandomizedSound
+function sounding.newRandomizedSound(...)
+    ---@type Sounding.RandomizedSound
+    local sound = {
+        sounds = {...}
+    }
+    return setmetatable(sound, RandomizedSoundMT)
+end
+
+---@return integer
+function RandomizedSound:play()
+    local sounds = self.sounds
+    local soundIndex = sounding.randomFn(#sounds)
+
+    sounds[soundIndex]:play()
+    return soundIndex
+end
+
+function RandomizedSound:stopAll()
+    local sounds = self.sounds
+    for soundIndex = 1, #sounds do
+        sounds[soundIndex]:stopAll()
+    end
+end
+
+---@param sound Sounding.Audio
+function RandomizedSound:addSoundOption(sound)
+    self.sounds[#self.sounds+1] = sound
+end
+
+-- The abstract shared Audio interface -------------------------------------------------------------
+
+--- Plays the audio and returns some sort of identifier for it
+---@return integer id
+function Audio:play()
+    return 0
+end
+
+--- Stops all audio managed by this instance
+function Audio:stopAll()
+end
+
+return sounding
