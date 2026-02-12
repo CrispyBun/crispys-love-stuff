@@ -47,6 +47,8 @@ local Audio = {}
 ---@field sources love.Source[]
 ---@field nextFreeSource integer
 ---@field maxSources integer
+---@field basePitch number
+---@field randomPitchScale number
 local Sound = {}
 local SoundMT = {__index = Sound}
 
@@ -75,6 +77,8 @@ function sounding.newSound(source)
         sources = {},
         nextFreeSource = 1,
         maxSources = 5,
+        basePitch = 1,
+        randomPitchScale = 1,
     }
     return setmetatable(sound, SoundMT)
 end
@@ -92,6 +96,9 @@ function Sound:play()
     end
 
     local source = sources[nextFreeSource]
+
+    source:setPitch(self:generatePitch())
+
     source:stop()
     source:play()
 
@@ -128,6 +135,35 @@ function Sound:populateMaxSources()
     end
 
     self.nextFreeSource = 1
+end
+
+---@param pitch number
+---@return self
+function Sound:setBasePitch(pitch)
+    if pitch <= 0 then error("Invalid pitch", 2) end
+    self.basePitch = pitch
+    return self
+end
+
+--- Sets by how much the sound pitch sould change each time it's played
+---@param randomPitchScale number
+---@return self
+function Sound:setRandomPitchScale(randomPitchScale)
+    if randomPitchScale < 1 then error("Invalid pitch scale", 2) end
+    self.randomPitchScale = randomPitchScale
+    return self
+end
+
+---@private
+---@return number
+function Sound:generatePitch()
+    local pitch = self.basePitch
+    local randomPitchScale = self.randomPitchScale
+
+    local pitchMin = pitch / randomPitchScale
+    local pitchMax = pitch * randomPitchScale
+
+    return pitchMin + sounding.randomFn() * (pitchMax - pitchMin)
 end
 
 --------------------------------------------------
