@@ -41,6 +41,9 @@ sounding.randomFn = math.random
 ---@class Sounding.Audio
 local Audio = {}
 
+--- Options that various `Sounding.Audio` implementations may or may not pay attention to
+---@class Sounding.AudioOptions
+
 --- A basic sound effect
 ---@class Sounding.Sound : Sounding.Audio
 ---@field baseSource love.Source
@@ -61,7 +64,7 @@ local RandomizedSoundMT = {__index = RandomizedSound}
 -- Main interface ----------------------------------------------------------------------------------
 
 ---@param soundId string
-function sounding.sfx(soundId)
+function sounding.play(soundId)
     error("NYI")
 end
 
@@ -83,8 +86,9 @@ function sounding.newSound(source)
     return setmetatable(sound, SoundMT)
 end
 
----@return integer
-function Sound:play()
+---@param options? Sounding.AudioOptions
+---@return integer sourceIndex
+function Sound:play(options)
     local sources = self.sources
 
     local nextFreeSource = self.nextFreeSource
@@ -113,6 +117,12 @@ function Sound:stopAll()
         local source = sources[sourceIndex]
         if source then source:stop() end
     end
+end
+
+---@param id integer
+---@return love.Source
+function Sound:readId(id)
+    return self.sources[id]
 end
 
 --- Sets how many clones of the base source can be created for this sfx at most
@@ -168,7 +178,7 @@ end
 
 --------------------------------------------------
 
---- Creates a new sound for playing randomly from a set of different `sounding.Audio`s.
+--- Creates a new sound for playing randomly from a set of different `Sounding.Audio`s.
 ---@param ... Sounding.Audio
 ---@return Sounding.RandomizedSound
 function sounding.newRandomizedSound(...)
@@ -179,12 +189,13 @@ function sounding.newRandomizedSound(...)
     return setmetatable(sound, RandomizedSoundMT)
 end
 
----@return integer
-function RandomizedSound:play()
+---@param options? Sounding.AudioOptions
+---@return integer soundIndex
+function RandomizedSound:play(options)
     local sounds = self.sounds
     local soundIndex = sounding.randomFn(#sounds)
 
-    sounds[soundIndex]:play()
+    sounds[soundIndex]:play(options)
     return soundIndex
 end
 
@@ -195,6 +206,12 @@ function RandomizedSound:stopAll()
     end
 end
 
+---@param id integer
+---@return Sounding.Audio
+function RandomizedSound:readId(id)
+    return self.sounds[id]
+end
+
 ---@param sound Sounding.Audio
 function RandomizedSound:addSoundOption(sound)
     self.sounds[#self.sounds+1] = sound
@@ -203,13 +220,22 @@ end
 -- The abstract shared Audio interface -------------------------------------------------------------
 
 --- Plays the audio and returns some sort of identifier for it
+---@param options? Sounding.AudioOptions
 ---@return integer id
-function Audio:play()
+function Audio:play(options)
     return 0
 end
 
 --- Stops all audio managed by this instance
 function Audio:stopAll()
+end
+
+--- Returns the object associated with the id returned by a call to `play`.
+--- What this object is depends on the specific audio implementation.
+---@param id integer
+---@return unknown
+function Audio:readId(id)
+    return nil
 end
 
 return sounding
