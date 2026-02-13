@@ -127,6 +127,13 @@ function Sound:readId(id)
     return self.sources[id]
 end
 
+---@return string
+function Sound:type()
+    return "Sound"
+end
+
+----------
+
 --- Sets how many clones of the base source can be created for this sfx at most
 ---@param maxSources integer
 function Sound:setMaxSources(maxSources)
@@ -243,6 +250,13 @@ function RandomizedSound:readId(id)
     return self.sounds[id]
 end
 
+---@return string
+function RandomizedSound:type()
+    return "RandomizedSound"
+end
+
+----------
+
 ---@param sound Sounding.Audio
 function RandomizedSound:addSoundOption(sound)
     self.sounds[#self.sounds+1] = sound
@@ -267,6 +281,12 @@ end
 ---@return unknown
 function Audio:readId(id)
     return nil
+end
+
+--- Returns the class name
+---@return string
+function Audio:type()
+    return "Audio"
 end
 
 return sounding
