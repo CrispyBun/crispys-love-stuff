@@ -43,6 +43,8 @@ local Audio = {}
 
 --- Options that various `Sounding.Audio` implementations may or may not pay attention to
 ---@class Sounding.AudioOptions
+---@field pitch? number The pitch of the sound (will be combined with any other pitch settings)
+---@field semitoneShift? number Like pitch, but in semitones rather than a multiplicative pitch value
 
 --- A basic sound effect
 ---@class Sounding.Sound : Sounding.Audio
@@ -70,7 +72,7 @@ end
 
 -- Sounds ------------------------------------------------------------------------------------------
 
---- Creates a new SFX. Should be made from a static source.
+--- Creates a new SFX. Should usually be made from a static source.
 ---@param source love.Source
 ---@return Sounding.Sound
 function sounding.newSound(source)
@@ -101,7 +103,7 @@ function Sound:play(options)
 
     local source = sources[nextFreeSource]
 
-    source:setPitch(self:generatePitch())
+    source:setPitch(self:generatePitch(options))
 
     source:stop()
     source:play()
@@ -164,11 +166,40 @@ function Sound:setRandomPitchScale(randomPitchScale)
     return self
 end
 
+-- https://github.com/mixxxdj/mixxx/wiki/pitch_percentages_for_semitones_and_notes
+local semitoneMultiplicativeIncrease = 1.0595
+---@param semitoneShift number
+local function semitoneShiftToPitch(semitoneShift)
+    if semitoneShift == 0 then return 1 end
+
+    local pitch = 1
+
+    local mult = (semitoneShift >= 0) and (semitoneMultiplicativeIncrease) or (1 / semitoneMultiplicativeIncrease)
+    semitoneShift = math.abs(semitoneShift)
+
+    -- A lookup table of pitches could ease this for loop but there's probably no point
+    for i = 1, semitoneShift do
+        pitch = pitch * mult
+    end
+
+    local semitoneShiftFine = semitoneShift % 1
+    local pitchNext = pitch * mult
+    pitch = pitch + (pitchNext - pitch) * semitoneShiftFine
+
+    return pitch
+end
+
 ---@private
+---@param options Sounding.AudioOptions?
 ---@return number
-function Sound:generatePitch()
+function Sound:generatePitch(options)
     local pitch = self.basePitch
     local randomPitchScale = self.randomPitchScale
+
+    if options then
+        pitch = pitch * (options.pitch or 1)
+        pitch = pitch * semitoneShiftToPitch(options.semitoneShift or 0)
+    end
 
     local pitchMin = pitch / randomPitchScale
     local pitchMax = pitch * randomPitchScale
