@@ -148,12 +148,12 @@ function Sound:stopAll()
 end
 
 --- Changes the options for all sources that are currently playing
----@param options? Sounding.AudioOptions
+---@param options Sounding.AudioOptions
 function Sound:setDynamicOptions(options)
     local sources = self.sources
     for sourceIndex = 1, self.maxSources do
         local source = sources[sourceIndex]
-        if source and source:isPlaying() then self:applySourceOptions(source, options) end
+        if source and source:isPlaying() then self:applySourceOptions(source, options, true) end
     end
 end
 
@@ -252,19 +252,26 @@ end
 ---@private
 ---@param source love.Source
 ---@param options Sounding.AudioOptions?
-function Sound:applySourceOptions(source, options)
-    self:applySourcePitch(source, options)
-    self:applySourceVolume(source, options)
-    self:applySourcePosition(source, options)
-    self:applySourceVelocity(source, options)
+---@param optionsAreDynamic? boolean
+function Sound:applySourceOptions(source, options, optionsAreDynamic)
+    self:applySourcePitch(source, options, optionsAreDynamic)
+    self:applySourceVolume(source, options, optionsAreDynamic)
+    self:applySourcePosition(source, options,optionsAreDynamic)
+    self:applySourceVelocity(source, options, optionsAreDynamic)
 end
 
 ---@private
 ---@param source love.Source
 ---@param options Sounding.AudioOptions?
-function Sound:applySourcePitch(source, options)
+---@param optionsAreDynamic? boolean
+function Sound:applySourcePitch(source, options, optionsAreDynamic)
     local pitch = self.basePitch
     local randomPitchScale = self.randomPitchScale
+
+    if optionsAreDynamic then
+        randomPitchScale = 1
+        if options and not (options.pitch or options.semitoneShift) then return end -- If we're not touching pitch, don't screw up the randomness of it
+    end
 
     if options then
         pitch = pitch * (options.pitch or 1)
@@ -281,7 +288,10 @@ end
 ---@private
 ---@param source love.Source
 ---@param options Sounding.AudioOptions?
-function Sound:applySourceVolume(source, options)
+---@param optionsAreDynamic? boolean
+function Sound:applySourceVolume(source, options, optionsAreDynamic)
+    if optionsAreDynamic and options and not options.volume then return end
+
     local volume = self.baseVolume
     volume = volume * (options and options.volume or 1)
     source:setVolume(volume)
@@ -290,12 +300,18 @@ end
 ---@private
 ---@param source love.Source
 ---@param options Sounding.AudioOptions?
-function Sound:applySourcePosition(source, options)
+---@param optionsAreDynamic? boolean
+function Sound:applySourcePosition(source, options, optionsAreDynamic)
     if not self.allowSpatialOptions then return end
 
-    local x = options and options.positionX or 0
-    local y = options and options.positionY or 0
-    local z = options and options.positionZ or 0
+    local xDefault = 0
+    local yDefault = 0
+    local zDefault = 0
+    if optionsAreDynamic then xDefault, yDefault, zDefault = source:getPosition() end
+
+    local x = options and options.positionX or xDefault
+    local y = options and options.positionY or yDefault
+    local z = options and options.positionZ or zDefault
 
     source:setPosition(x, y, z)
 end
@@ -303,12 +319,18 @@ end
 ---@private
 ---@param source love.Source
 ---@param options Sounding.AudioOptions?
-function Sound:applySourceVelocity(source, options)
+---@param optionsAreDynamic? boolean
+function Sound:applySourceVelocity(source, options, optionsAreDynamic)
     if not self.allowSpatialOptions then return end
 
-    local x = options and options.velocityX or 0
-    local y = options and options.velocityY or 0
-    local z = options and options.velocityZ or 0
+    local xDefault = 0
+    local yDefault = 0
+    local zDefault = 0
+    if optionsAreDynamic then xDefault, yDefault, zDefault = source:getVelocity() end
+
+    local x = options and options.velocityX or xDefault
+    local y = options and options.velocityY or yDefault
+    local z = options and options.velocityZ or zDefault
 
     source:setVelocity(x, y, z)
 end
@@ -344,7 +366,7 @@ function RandomizedSound:stopAll()
 end
 
 --- Changes the options for all sounds that are currently playing
----@param options? Sounding.AudioOptions
+---@param options Sounding.AudioOptions
 function RandomizedSound:setDynamicOptions(options)
     local sounds = self.sounds
     for soundIndex = 1, #sounds do
@@ -384,7 +406,7 @@ function Audio:stopAll()
 end
 
 --- Changes the options for any audio that's already playing (does not affect audio played from the next call to `play()`)
----@param options? Sounding.AudioOptions
+---@param options Sounding.AudioOptions
 function Audio:setDynamicOptions(options)
 end
 
