@@ -131,11 +131,7 @@ function Sound:play(options)
         source:stop()
     end
 
-    self:applySourcePitch(source, options)
-    self:applySourceVolume(source, options)
-    self:applySourcePosition(source, options)
-    self:applySourceVelocity(source, options)
-
+    self:applySourceOptions(source, options)
     if not source:play() then return nil end
 
     self.nextFreeSource = nextFreeSource + 1
@@ -148,6 +144,16 @@ function Sound:stopAll()
     for sourceIndex = 1, self.maxSources do
         local source = sources[sourceIndex]
         if source then source:stop() end
+    end
+end
+
+--- Changes the options for all sources that are currently playing
+---@param options? Sounding.AudioOptions
+function Sound:setDynamicOptions(options)
+    local sources = self.sources
+    for sourceIndex = 1, self.maxSources do
+        local source = sources[sourceIndex]
+        if source and source:isPlaying() then self:applySourceOptions(source, options) end
     end
 end
 
@@ -246,6 +252,16 @@ end
 ---@private
 ---@param source love.Source
 ---@param options Sounding.AudioOptions?
+function Sound:applySourceOptions(source, options)
+    self:applySourcePitch(source, options)
+    self:applySourceVolume(source, options)
+    self:applySourcePosition(source, options)
+    self:applySourceVelocity(source, options)
+end
+
+---@private
+---@param source love.Source
+---@param options Sounding.AudioOptions?
 function Sound:applySourcePitch(source, options)
     local pitch = self.basePitch
     local randomPitchScale = self.randomPitchScale
@@ -327,6 +343,15 @@ function RandomizedSound:stopAll()
     end
 end
 
+--- Changes the options for all sounds that are currently playing
+---@param options? Sounding.AudioOptions
+function RandomizedSound:setDynamicOptions(options)
+    local sounds = self.sounds
+    for soundIndex = 1, #sounds do
+        sounds[soundIndex]:setDynamicOptions(options)
+    end
+end
+
 ---@param id integer
 ---@return Sounding.Audio
 function RandomizedSound:readId(id)
@@ -347,15 +372,20 @@ end
 
 -- The abstract shared Audio interface -------------------------------------------------------------
 
---- Plays the audio and returns some sort of identifier for it
+--- Plays the audio and returns some sort of identifier for it (if applicable)
 ---@param options? Sounding.AudioOptions
----@return integer id
+---@return integer id?
 function Audio:play(options)
     return 0
 end
 
 --- Stops all audio managed by this instance
 function Audio:stopAll()
+end
+
+--- Changes the options for any audio that's already playing (does not affect audio played from the next call to `play()`)
+---@param options? Sounding.AudioOptions
+function Audio:setDynamicOptions(options)
 end
 
 --- Returns the object associated with the id returned by a call to `play`.
