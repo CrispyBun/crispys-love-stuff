@@ -53,6 +53,7 @@ local Audio = {}
 ---@field nextFreeSource integer
 ---@field maxSources integer
 ---@field sourcePriorityMode Sounding.SourcePriorityMode
+---@field allowSpatialOptions boolean
 ---@field basePitch number
 ---@field randomPitchScale number
 local Sound = {}
@@ -89,9 +90,14 @@ function sounding.newSound(source)
         nextFreeSource = 1,
         maxSources = 5,
         sourcePriorityMode = "stop_old",
+        allowSpatialOptions = true,
         basePitch = 1,
         randomPitchScale = 1,
     }
+
+    -- I can't find a better way to automatically check if the source is mono and allows directional stuff lol
+    if not pcall(source.getPosition, source) then sound.allowSpatialOptions = false end
+
     return setmetatable(sound, SoundMT)
 end
 
