@@ -52,10 +52,16 @@ local Audio = {}
 ---@field sources love.Source[]
 ---@field nextFreeSource integer
 ---@field maxSources integer
+---@field sourcePriorityMode Sounding.SourcePriorityMode
 ---@field basePitch number
 ---@field randomPitchScale number
 local Sound = {}
 local SoundMT = {__index = Sound}
+
+--- Options for what should happen when the source in a `Sounding.Sound` is still playing when another sound tries to play
+---@alias Sounding.SourcePriorityMode
+---| '"stop_old"' # When a source is busy and new sound wants to play, the old one is stopped to make room for the next
+---| '"cancel_new"' # When a source is busy and a new sound wants to play, the new sound is cancelled and doesn't play
 
 --- A sound effect that picks from a couple of sounds to play
 ---@class Sounding.RandomizedSound : Sounding.Audio
@@ -82,14 +88,16 @@ function sounding.newSound(source)
         sources = {},
         nextFreeSource = 1,
         maxSources = 5,
+        sourcePriorityMode = "stop_old",
         basePitch = 1,
         randomPitchScale = 1,
     }
     return setmetatable(sound, SoundMT)
 end
 
+--- Plays the sound and returns the id of the source or nil if no sound was played.
 ---@param options? Sounding.AudioOptions
----@return integer sourceIndex
+---@return integer? sourceIndex
 function Sound:play(options)
     local sources = self.sources
 
@@ -105,8 +113,12 @@ function Sound:play(options)
 
     source:setPitch(self:generatePitch(options))
 
-    source:stop()
-    source:play()
+    if source:isPlaying() then
+        if self.sourcePriorityMode == "cancel_new" then return nil end
+        source:stop()
+    end
+
+    if not source:play() then return nil end
 
     self.nextFreeSource = nextFreeSource + 1
     return nextFreeSource
@@ -142,6 +154,13 @@ function Sound:setMaxSources(maxSources)
     end
 
     self.maxSources = maxSources
+end
+
+--- Sets what should happen when this sound tries to play
+--- but the source it's trying to use is busy.
+---@param sourcePriorityMode Sounding.SourcePriorityMode
+function Sound:setSourcePriorityMode(sourcePriorityMode)
+    self.sourcePriorityMode = sourcePriorityMode
 end
 
 --- Creates all the source clones in advance
