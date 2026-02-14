@@ -45,6 +45,7 @@ local Audio = {}
 ---@class Sounding.AudioOptions
 ---@field pitch? number The pitch of the sound (will be combined with any other pitch settings)
 ---@field semitoneShift? number Like pitch, but in semitones rather than a multiplicative pitch value
+---@field volume? number Volume of the sound
 ---@field positionX? number The X position of the sound in space
 ---@field positionY? number The Y position of the sound in space
 ---@field positionZ? number The Z position of the sound in space
@@ -61,6 +62,7 @@ local Audio = {}
 ---@field sourcePriorityMode Sounding.SourcePriorityMode
 ---@field allowSpatialOptions boolean
 ---@field basePitch number
+---@field baseVolume number
 ---@field randomPitchScale number
 local Sound = {}
 local SoundMT = {__index = Sound}
@@ -98,6 +100,7 @@ function sounding.newSound(source)
         sourcePriorityMode = "stop_old",
         allowSpatialOptions = true,
         basePitch = 1,
+        baseVolume = 1,
         randomPitchScale = 1,
     }
 
@@ -129,6 +132,7 @@ function Sound:play(options)
     end
 
     self:applySourcePitch(source, options)
+    self:applySourceVolume(source, options)
     self:applySourcePosition(source, options)
     self:applySourceVelocity(source, options)
 
@@ -163,6 +167,8 @@ end
 --- Sets how many clones of the base source can be created for this sfx at most
 ---@param maxSources integer
 function Sound:setMaxSources(maxSources)
+    if maxSources < 1 then error("Invalid max source count", 2) end
+
     for sourceIndex = maxSources + 1, self.maxSources, 1 do
         self.sources[sourceIndex] = nil
     end
@@ -194,6 +200,14 @@ end
 function Sound:setBasePitch(pitch)
     if pitch <= 0 then error("Invalid pitch", 2) end
     self.basePitch = pitch
+    return self
+end
+
+---@param volume number
+---@return self
+function Sound:setBaseVolume(volume)
+    if volume < 0 or volume > 1 then error("Invalid volume", 2) end
+    self.baseVolume = volume
     return self
 end
 
@@ -246,6 +260,15 @@ function Sound:applySourcePitch(source, options)
 
     pitch = pitchMin + sounding.randomFn() * (pitchMax - pitchMin)
     source:setPitch(pitch)
+end
+
+---@private
+---@param source love.Source
+---@param options Sounding.AudioOptions?
+function Sound:applySourceVolume(source, options)
+    local volume = self.baseVolume
+    volume = volume * (options and options.volume or 1)
+    source:setVolume(volume)
 end
 
 ---@private
