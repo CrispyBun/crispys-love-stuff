@@ -45,6 +45,12 @@ local Audio = {}
 ---@class Sounding.AudioOptions
 ---@field pitch? number The pitch of the sound (will be combined with any other pitch settings)
 ---@field semitoneShift? number Like pitch, but in semitones rather than a multiplicative pitch value
+---@field positionX? number The X position of the sound in space
+---@field positionY? number The Y position of the sound in space
+---@field positionZ? number The Z position of the sound in space
+---@field velocityX? number The X velocity of the sound in space
+---@field velocityY? number The Y velocity of the sound in space
+---@field velocityZ? number The Z velocity of the sound in space
 
 --- A basic sound effect
 ---@class Sounding.Sound : Sounding.Audio
@@ -117,12 +123,14 @@ function Sound:play(options)
 
     local source = sources[nextFreeSource]
 
-    source:setPitch(self:generatePitch(options))
-
     if source:isPlaying() then
         if self.sourcePriorityMode == "cancel_new" then return nil end
         source:stop()
     end
+
+    self:applySourcePitch(source, options)
+    self:applySourcePosition(source, options)
+    self:applySourceVelocity(source, options)
 
     if not source:play() then return nil end
 
@@ -222,9 +230,9 @@ local function semitoneShiftToPitch(semitoneShift)
 end
 
 ---@private
+---@param source love.Source
 ---@param options Sounding.AudioOptions?
----@return number
-function Sound:generatePitch(options)
+function Sound:applySourcePitch(source, options)
     local pitch = self.basePitch
     local randomPitchScale = self.randomPitchScale
 
@@ -236,7 +244,34 @@ function Sound:generatePitch(options)
     local pitchMin = pitch / randomPitchScale
     local pitchMax = pitch * randomPitchScale
 
-    return pitchMin + sounding.randomFn() * (pitchMax - pitchMin)
+    pitch = pitchMin + sounding.randomFn() * (pitchMax - pitchMin)
+    source:setPitch(pitch)
+end
+
+---@private
+---@param source love.Source
+---@param options Sounding.AudioOptions?
+function Sound:applySourcePosition(source, options)
+    if not self.allowSpatialOptions then return end
+
+    local x = options and options.positionX or 0
+    local y = options and options.positionY or 0
+    local z = options and options.positionZ or 0
+
+    source:setPosition(x, y, z)
+end
+
+---@private
+---@param source love.Source
+---@param options Sounding.AudioOptions?
+function Sound:applySourceVelocity(source, options)
+    if not self.allowSpatialOptions then return end
+
+    local x = options and options.velocityX or 0
+    local y = options and options.velocityY or 0
+    local z = options and options.velocityZ or 0
+
+    source:setVelocity(x, y, z)
 end
 
 --------------------------------------------------
