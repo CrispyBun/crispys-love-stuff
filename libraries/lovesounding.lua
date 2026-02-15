@@ -52,6 +52,8 @@ local Audio = {}
 ---@field velocityX? number The X velocity of the sound in space
 ---@field velocityY? number The Y velocity of the sound in space
 ---@field velocityZ? number The Z velocity of the sound in space
+---@field filterEnabled? boolean Whether or not filtering is enabled. Must be set to `true` for `filterSettings` to do anything.
+---@field filterSettings? {type: love.FilterType, volume: number, highgain: number, lowgain: number} Configures the filter for the sound
 
 --- A basic sound effect
 ---@class Sounding.Sound : Sounding.Audio
@@ -258,6 +260,7 @@ function Sound:applySourceOptions(source, options, optionsAreDynamic)
     self:applySourceVolume(source, options, optionsAreDynamic)
     self:applySourcePosition(source, options,optionsAreDynamic)
     self:applySourceVelocity(source, options, optionsAreDynamic)
+    self:applySourceFilter(source, options, optionsAreDynamic)
 end
 
 ---@private
@@ -333,6 +336,21 @@ function Sound:applySourceVelocity(source, options, optionsAreDynamic)
     local z = options and options.velocityZ or zDefault
 
     source:setVelocity(x, y, z)
+end
+
+---@private
+---@param source love.Source
+---@param options Sounding.AudioOptions?
+---@param optionsAreDynamic? boolean
+function Sound:applySourceFilter(source, options, optionsAreDynamic)
+    if optionsAreDynamic and options and options.filterEnabled == nil then return end
+
+    if not options then return end
+    if not options.filterEnabled or not options.filterSettings then
+        source:setFilter()
+    else
+        source:setFilter(options.filterSettings)
+    end
 end
 
 --------------------------------------------------
