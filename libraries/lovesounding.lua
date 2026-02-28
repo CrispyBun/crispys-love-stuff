@@ -143,7 +143,7 @@ function Sound:play(options)
     return nextFreeSource
 end
 
-function Sound:stopAll()
+function Sound:stop()
     local sources = self.sources
 
     for sourceIndex = 1, self.maxSources do
@@ -447,10 +447,10 @@ function RandomizedSound:play(options)
     return soundIndex
 end
 
-function RandomizedSound:stopAll()
+function RandomizedSound:stop()
     local sounds = self.sounds
     for soundIndex = 1, #sounds do
-        sounds[soundIndex]:stopAll()
+        sounds[soundIndex]:stop()
     end
 end
 
@@ -517,7 +517,7 @@ function Audio:play(options)
 end
 
 --- Stops all audio managed by this instance
-function Audio:stopAll()
+function Audio:stop()
 end
 
 --- Changes the options for any audio that's already playing (does not affect audio played from the next call to `play()`)
