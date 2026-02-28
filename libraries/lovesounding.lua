@@ -54,6 +54,9 @@ local Audio = {}
 ---@field velocityZ? number The Z velocity of the sound in space
 ---@field filterEnabled? boolean Whether or not filtering is enabled. Must be set to `true` for `filterSettings` to do anything.
 ---@field filterSettings? {type: love.FilterType, volume: number, highgain: number, lowgain: number} Configures the filter for the sound
+---@field effectEnabled? boolean Toggles whether the effect given by `effectName` will be enabled or disabled. Not setting this will make that setting be ignored.
+---@field effectName? string The name of the effect to be enabled or disabled
+---@field effectFilterSettings? {type: love.FilterType, volume: number, highgain: number, lowgain: number} Configures the filter of the audio that's passed into the effect being enabled.
 
 --- A basic sound effect
 ---@class Sounding.Sound : Sounding.Audio
@@ -251,6 +254,16 @@ local function semitoneShiftToPitch(semitoneShift)
     return pitch
 end
 
+-- These following applySourceWhatever methods are a bit of a mess,
+-- but the idea is that if the options are dynamic,
+-- nothing that's already running should be touched unless explicitly changed by the options table,
+-- and if the options aren't dynamic,
+-- the source should be first reset into its default starting state and turn off any special effects.
+--
+-- Maybe it would have been better to have these separated into reset and apply effect methods,
+-- but that would make some shenanigans with the pitch logic a bit messy to do anyways
+-- (dynamically changing the pitch just sets it, but setting the pitch just once when playing the audio combines that with the random pitch scale).
+
 ---@private
 ---@param source love.Source
 ---@param options Sounding.AudioOptions?
@@ -261,6 +274,7 @@ function Sound:applySourceOptions(source, options, optionsAreDynamic)
     self:applySourcePosition(source, options,optionsAreDynamic)
     self:applySourceVelocity(source, options, optionsAreDynamic)
     self:applySourceFilter(source, options, optionsAreDynamic)
+    self:applySourceEffect(source, options, optionsAreDynamic)
 end
 
 ---@private
@@ -354,6 +368,35 @@ function Sound:applySourceFilter(source, options, optionsAreDynamic)
     else
         source:setFilter(options.filterSettings)
     end
+end
+
+---@private
+---@param source love.Source
+---@param options Sounding.AudioOptions?
+---@param optionsAreDynamic? boolean
+function Sound:applySourceEffect(source, options, optionsAreDynamic)
+    if not optionsAreDynamic then
+        local effects = source:getActiveEffects()
+        for effectIndex = 1, #effects do
+            source:setEffect(effects[effectIndex], false)
+        end
+    end
+
+    if not options then return end
+    if not options.effectName then return end
+    if options.effectEnabled == nil then return end
+
+    if not options.effectEnabled then
+        source:setEffect(options.effectName, false)
+        return
+    end
+
+    if options.effectFilterSettings then
+        source:setEffect(options.effectName, options.effectFilterSettings)
+        return
+    end
+
+    source:setEffect(options.effectName, true)
 end
 
 --------------------------------------------------
