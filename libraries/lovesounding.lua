@@ -59,6 +59,12 @@ local Audio = {}
 ---@field effectName? string The name of the effect to be enabled or disabled
 ---@field effectFilterSettings? {type: love.FilterType, volume: number, highgain: number, lowgain: number} Configures the filter of the audio that's passed into the effect being enabled.
 
+--- ^ it's currently impossible to play a single source with multiple effects applied (without using dynamic options, but those affect all sources).
+--- Could be fixed by having another field which is an array of more effect options, but it seems overkill.
+--- If you want many filters applied at the same time, chances are it's better to just get a clone of the audio
+--- and then going ham with setting the dynamic options.
+--- But I dunno. Maybe I'll add it at some point later(tm).
+
 --- A basic sound effect
 ---@class Sounding.Sound : Sounding.Audio
 ---@field baseSource love.Source
@@ -533,9 +539,9 @@ end
 
 --- Plays the audio and returns some sort of identifier for it (if applicable)
 ---@param options? Sounding.AudioOptions
----@return integer id?
+---@return integer? id
 function Audio:play(options)
-    return 0
+    return nil
 end
 
 --- Stops all audio managed by this instance
