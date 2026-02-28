@@ -37,7 +37,8 @@ sounding.randomFn = math.random
 
 -- Definitions -------------------------------------------------------------------------------------
 
---- The shared interface for all types of sounds and music
+--- The shared interface for all types of sounds and music,
+--- documented at the bottom of the file.
 ---@class Sounding.Audio
 local Audio = {}
 
@@ -149,6 +150,15 @@ function Sound:stop()
     for sourceIndex = 1, self.maxSources do
         local source = sources[sourceIndex]
         if source then source:stop() end
+    end
+end
+
+---@param loop boolean
+function Sound:setLooping(loop)
+    local sources = self.sources
+    for sourceIndex = 1, self.maxSources do
+        local source = sources[sourceIndex]
+        if source then source:setLooping(loop) end
     end
 end
 
@@ -454,6 +464,14 @@ function RandomizedSound:stop()
     end
 end
 
+---@param loop boolean
+function RandomizedSound:setLooping(loop)
+    local sounds = self.sounds
+    for soundIndex = 1, #sounds do
+        sounds[soundIndex]:setLooping(loop)
+    end
+end
+
 --- Changes the options for all sounds that are currently playing
 ---@param options Sounding.AudioOptions
 function RandomizedSound:setDynamicOptions(options)
@@ -502,6 +520,10 @@ end
 
 ----------
 
+--- Adds a new option for the randomized sound to manage.
+--- 
+--- The randomized sound will own and manage this sound completely,
+--- so make sure to clone it first if you plan on using it elsewhere too.
 ---@param sound Sounding.Audio
 function RandomizedSound:addSoundOption(sound)
     self.sounds[#self.sounds+1] = sound
@@ -518,6 +540,15 @@ end
 
 --- Stops all audio managed by this instance
 function Audio:stop()
+end
+
+--- Sets whether or not the sounds played by this instance should loop.
+--- 
+--- This is generally a bad idea for any Audio that's managed globally,
+--- but can be good for audio that a specific object owns
+--- (e.g. a car engine that always owns its sound-making looping Audio using Audio:cloneTiny().)
+---@param loop boolean
+function Audio:setLooping(loop)
 end
 
 --- Changes the options for any audio that's already playing (does not affect audio played from the next call to `play()`)
