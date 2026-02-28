@@ -152,11 +152,20 @@ end
 
 function Sound:stop()
     local sources = self.sources
-
     for sourceIndex = 1, self.maxSources do
         local source = sources[sourceIndex]
         if source then source:stop() end
     end
+end
+
+---@return boolean
+function Sound:isPlaying()
+    local sources = self.sources
+    for sourceIndex = 1, self.maxSources do
+        local source = sources[sourceIndex]
+        if source and source:isPlaying() then return true end
+    end
+    return false
 end
 
 ---@param loop boolean
@@ -470,6 +479,15 @@ function RandomizedSound:stop()
     end
 end
 
+---@return boolean
+function RandomizedSound:isPlaying()
+    local sounds = self.sounds
+    for soundIndex = 1, #sounds do
+        if sounds[soundIndex]:isPlaying() then return true end
+    end
+    return false
+end
+
 ---@param loop boolean
 function RandomizedSound:setLooping(loop)
     local sounds = self.sounds
@@ -546,6 +564,12 @@ end
 
 --- Stops all audio managed by this instance
 function Audio:stop()
+end
+
+--- Returns true if any audio managed by this instance is currently playing
+---@return boolean
+function Audio:isPlaying()
+    return false
 end
 
 --- Sets whether or not the sounds played by this instance should loop.
