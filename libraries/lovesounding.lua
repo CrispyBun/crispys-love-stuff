@@ -273,7 +273,7 @@ function Sound:applySourcePitch(source, options, optionsAreDynamic)
 
     if optionsAreDynamic then
         randomPitchScale = 1
-        if options and not (options.pitch or options.semitoneShift) then return end -- If we're not touching pitch, don't screw up the randomness of it
+        if not options or not (options.pitch or options.semitoneShift) then return end -- If we're not touching pitch, don't screw up the randomness of it
     end
 
     if options then
@@ -293,7 +293,7 @@ end
 ---@param options Sounding.AudioOptions?
 ---@param optionsAreDynamic? boolean
 function Sound:applySourceVolume(source, options, optionsAreDynamic)
-    if optionsAreDynamic and options and not options.volume then return end
+    if optionsAreDynamic and (not options or not options.volume) then return end
 
     local volume = self.baseVolume
     volume = volume * (options and options.volume or 1)
@@ -343,10 +343,13 @@ end
 ---@param options Sounding.AudioOptions?
 ---@param optionsAreDynamic? boolean
 function Sound:applySourceFilter(source, options, optionsAreDynamic)
-    if optionsAreDynamic and options and options.filterEnabled == nil then return end
+    if optionsAreDynamic then
+        if not options then return end
+        if options.filterEnabled == nil then return end
+        if options.filterEnabled and not options.filterSettings then return end
+    end
 
-    if not options then return end
-    if not options.filterEnabled or not options.filterSettings then
+    if not options or not options.filterEnabled or not options.filterSettings then
         source:setFilter()
     else
         source:setFilter(options.filterSettings)
