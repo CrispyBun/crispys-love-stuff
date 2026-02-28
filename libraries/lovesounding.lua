@@ -126,7 +126,7 @@ function Sound:play(options)
 
     if nextFreeSource > maxSources then nextFreeSource = 1 end
     if not sources[nextFreeSource] then
-        sources[nextFreeSource] = self.baseSource:clone()
+        sources[nextFreeSource] = (nextFreeSource == 1 and self.baseSource) or (self.baseSource:clone())
     end
 
     local source = sources[nextFreeSource]
@@ -171,6 +171,31 @@ end
 ---@return string
 function Sound:type()
     return "Sound"
+end
+
+---@return Sounding.Sound
+function Sound:clone()
+    ---@type Sounding.Sound
+    local clone = {
+        baseSource = self.baseSource:clone(),
+        sources = {},
+        nextFreeSource = 1,
+        maxSources = self.maxSources,
+        sourcePriorityMode = self.sourcePriorityMode,
+        allowSpatialOptions = self.allowSpatialOptions,
+        basePitch = self.basePitch,
+        baseVolume = self.baseVolume,
+        randomPitchScale = self.randomPitchScale,
+    }
+
+    return setmetatable(clone, SoundMT)
+end
+
+---@return Sounding.Sound
+function Sound:cloneTiny()
+    local clone = self:clone()
+    clone.maxSources = 1
+    return clone
 end
 
 ----------
@@ -449,6 +474,32 @@ function RandomizedSound:type()
     return "RandomizedSound"
 end
 
+---@return Sounding.RandomizedSound
+function RandomizedSound:clone()
+    local clone = sounding.newRandomizedSound()
+
+    local soundsSelf = self.sounds
+    local soundsClone = clone.sounds
+    for soundIndex = 1, #soundsSelf do
+        soundsClone[soundIndex] = soundsSelf[soundIndex]:clone()
+    end
+
+    return clone
+end
+
+---@return Sounding.RandomizedSound
+function RandomizedSound:cloneTiny()
+    local clone = sounding.newRandomizedSound()
+
+    local soundsSelf = self.sounds
+    local soundsClone = clone.sounds
+    for soundIndex = 1, #soundsSelf do
+        soundsClone[soundIndex] = soundsSelf[soundIndex]:cloneTiny()
+    end
+
+    return clone
+end
+
 ----------
 
 ---@param sound Sounding.Audio
@@ -486,6 +537,21 @@ end
 ---@return string
 function Audio:type()
     return "Audio"
+end
+
+--- Returns a full clone of this instance
+---@return Sounding.Audio
+function Audio:clone()
+    -- Implementing this is pointless because Audio is abstract anyway
+    -- but oh well
+    return setmetatable({}, {__index = Audio})
+end
+
+--- Returns the smallest possible viable clone of this instance (omitting some features such as multiple simultaneously playing sources),
+--- ideal for when some object needs to own its audio source completely (e.g. looping sounds, heavily dynamically changing sounds, ...)
+---@return Sounding.Audio
+function Audio:cloneTiny()
+    return self:clone()
 end
 
 return sounding
