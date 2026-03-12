@@ -97,8 +97,11 @@ local RandomizedSoundMT = {__index = RandomizedSound}
 ---@param soundId string
 ---@param options? Sounding.AudioOptions
 function sounding.play(soundId, options)
-    if not sounding.registeredSounds[soundId] then error(string.format("There is no registered sound with the ID '%s'", soundId), 2) end
-    sounding.registeredSounds[soundId]:play(options)
+    local sound = sounding.registeredSounds[soundId]
+    if not sound then error(string.format("There is no registered sound with the ID '%s'", soundId), 2) end
+
+    sound:play(options)
+    if sounding.audioPlayedCallback then sounding.audioPlayedCallback(sound) end
 end
 
 --- Like `play()`, but doesn't error if an audio under the given soundId is not registered (and just does nothing instead)
@@ -129,6 +132,11 @@ function sounding.register(soundId, audio)
     if sounding.registeredSounds[soundId] then error(string.format("There is already a registered sound with the ID '%s'", soundId), 2) end
     sounding.registeredSounds[soundId] = audio
 end
+
+--- An optional callback function can be put here
+--- to be called each time an audio is played using `play()` or `tryPlay()`.
+---@type fun(audio: Sounding.Audio)?
+sounding.audioPlayedCallback = nil
 
 ---@type table<string, Sounding.Audio>
 sounding.registeredSounds = {}
