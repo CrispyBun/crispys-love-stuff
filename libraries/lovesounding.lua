@@ -92,10 +92,45 @@ local RandomizedSoundMT = {__index = RandomizedSound}
 
 -- Main interface ----------------------------------------------------------------------------------
 
+--- Plays a registered audio
 ---@param soundId string
-function sounding.play(soundId)
-    error("NYI")
+---@param options? Sounding.AudioOptions
+function sounding.play(soundId, options)
+    if not sounding.registeredSounds[soundId] then error(string.format("There is no registered sound with the ID '%s'", soundId), 2) end
+    sounding.registeredSounds[soundId]:play(options)
 end
+
+--- Like `play()`, but doesn't error if an audio under the given soundId is not registered (and just does nothing instead)
+---@param soundId string
+---@param options? Sounding.AudioOptions
+function sounding.tryPlay(soundId, options)
+    if not sounding.registeredSounds[soundId] then return end
+    return sounding.play(soundId, options)
+end
+
+--- Returns a registered audio object
+---@param soundId string
+---@return Sounding.Audio
+function sounding.get(soundId)
+    return sounding.registeredSounds[soundId]
+end
+
+--- Returns the table of all registered audio
+---@return table<string, Sounding.Audio>
+function sounding.getAll()
+    return sounding.registeredSounds
+end
+
+--- Registers an audio to the main global interface
+---@param soundId string
+---@param audio Sounding.Audio
+function sounding.register(soundId, audio)
+    if sounding.registeredSounds[soundId] then error(string.format("There is already a registered sound with the ID '%s'", soundId), 2) end
+    sounding.registeredSounds[soundId] = audio
+end
+
+---@type table<string, Sounding.Audio>
+sounding.registeredSounds = {}
 
 -- Sounds ------------------------------------------------------------------------------------------
 
