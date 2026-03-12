@@ -122,6 +122,16 @@ function sounding.newSound(source)
     return setmetatable(sound, SoundMT)
 end
 
+--- Like `sounding.newSound()`, but optimises the Sound object for playing a single (likely streamed) source of music
+--- rather than having many clones of a sound effect.
+---@param source love.Source
+---@return Sounding.Sound
+function sounding.newSong(source)
+    local sound = sounding.newSound(source)
+    sound:setMaxSources(1)
+    return sound
+end
+
 --- Plays the sound and returns the id of the source or nil if no sound was played.
 ---@param options? Sounding.AudioOptions
 ---@return integer? sourceIndex
