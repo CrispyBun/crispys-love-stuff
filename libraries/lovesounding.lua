@@ -40,6 +40,7 @@ sounding.randomFn = math.random
 --- The shared interface for all types of sounds and music,
 --- documented at the bottom of the file.
 ---@class Sounding.Audio
+---@field customData table<string, any> Any arbitrary data associated with the audio
 local Audio = {}
 
 --- Options that various `Sounding.Audio` implementations may or may not pay attention to
@@ -140,6 +141,7 @@ sounding.registeredSounds = {}
 function sounding.newSound(source)
     ---@type Sounding.Sound
     local sound = {
+        customData = {},
         baseSource = source,
         sources = {},
         nextFreeSource = 1,
@@ -243,10 +245,23 @@ function Sound:type()
     return "Sound"
 end
 
+---@param key string
+---@param value any
+function Sound:setCustomDataField(key, value)
+    self.customData[key] = value
+end
+
+---@param key string
+---@return any
+function Sound:getCustomDataField(key)
+    return self.customData[key]
+end
+
 ---@return Sounding.Sound
 function Sound:clone()
     ---@type Sounding.Sound
     local clone = {
+        customData = {},
         baseSource = self.baseSource:clone(),
         sources = {},
         nextFreeSource = 1,
@@ -257,6 +272,10 @@ function Sound:clone()
         baseVolume = self.baseVolume,
         randomPitchScale = self.randomPitchScale,
     }
+
+    for key in pairs(self.customData) do
+        clone.customData[key] = self.customData[key]
+    end
 
     return setmetatable(clone, SoundMT)
 end
@@ -502,6 +521,7 @@ end
 function sounding.newRandomizedSound(...)
     ---@type Sounding.RandomizedSound
     local sound = {
+        customData = {},
         sounds = {...}
     }
     return setmetatable(sound, RandomizedSoundMT)
@@ -561,6 +581,18 @@ function RandomizedSound:type()
     return "RandomizedSound"
 end
 
+---@param key string
+---@param value any
+function RandomizedSound:setCustomDataField(key, value)
+    self.customData[key] = value
+end
+
+---@param key string
+---@return any
+function RandomizedSound:getCustomDataField(key)
+    return self.customData[key]
+end
+
 ---@return Sounding.RandomizedSound
 function RandomizedSound:clone()
     local clone = sounding.newRandomizedSound()
@@ -569,6 +601,10 @@ function RandomizedSound:clone()
     local soundsClone = clone.sounds
     for soundIndex = 1, #soundsSelf do
         soundsClone[soundIndex] = soundsSelf[soundIndex]:clone()
+    end
+
+    for key in pairs(self.customData) do
+        clone.customData[key] = self.customData[key]
     end
 
     return clone
@@ -582,6 +618,10 @@ function RandomizedSound:cloneTiny()
     local soundsClone = clone.sounds
     for soundIndex = 1, #soundsSelf do
         soundsClone[soundIndex] = soundsSelf[soundIndex]:cloneTiny()
+    end
+
+    for key in pairs(self.customData) do
+        clone.customData[key] = self.customData[key]
     end
 
     return clone
@@ -643,6 +683,20 @@ end
 ---@return string
 function Audio:type()
     return "Audio"
+end
+
+--- Sets an arbitrary value to be associated with the audio under the given key
+---@param key string
+---@param value any
+function Audio:setCustomDataField(key, value)
+    self.customData[key] = value
+end
+
+--- Returns the value previously assigned to the audio using `setCustomDataField()`
+---@param key string
+---@return any
+function Audio:getCustomDataField(key)
+    return self.customData[key]
 end
 
 --- Returns a full clone of this instance
