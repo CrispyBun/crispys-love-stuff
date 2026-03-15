@@ -91,6 +91,14 @@ local SoundMT = {__index = Sound}
 local RandomizedSound = {}
 local RandomizedSoundMT = {__index = RandomizedSound}
 
+--- A sound that tries to play the closest matching audio to the semitoneShift audio option (the pitch option isn't taken into account)
+---@class Sounding.NoteSampledSound : Sounding.Audio
+---@field notes table<integer, Sounding.Audio> Not an array, but a table with sparse integer (including negative and zero) keys mapped to the sound for that semitone
+---@field minNote integer
+---@field maxNote integer
+local NoteSampledSound = {}
+local NoteSampledSoundMT = {__index = NoteSampledSound}
+
 -- Main interface ----------------------------------------------------------------------------------
 
 --- Plays a registered audio
@@ -355,6 +363,8 @@ end
 
 -- https://github.com/mixxxdj/mixxx/wiki/pitch_percentages_for_semitones_and_notes
 local semitoneMultiplicativeIncrease = 1.0595
+
+--- Turns a relative shift of semitones to a multiplicative pitch value
 ---@param semitoneShift number
 local function semitoneShiftToPitch(semitoneShift)
     if semitoneShift == 0 then return 1 end
@@ -375,6 +385,7 @@ local function semitoneShiftToPitch(semitoneShift)
 
     return pitch
 end
+sounding.semitoneShiftToPitch = semitoneShiftToPitch
 
 -- These following applySourceWhatever methods are a bit of a mess,
 -- but the idea is that if the options are dynamic,
@@ -536,9 +547,10 @@ function sounding.newRandomizedSound(...)
 end
 
 ---@param options? Sounding.AudioOptions
----@return integer soundIndex
+---@return integer? soundIndex
 function RandomizedSound:play(options)
     local sounds = self.sounds
+    if #sounds == nil then return nil end
     local soundIndex = sounding.randomFn(#sounds)
 
     sounds[soundIndex]:play(options)
@@ -644,6 +656,166 @@ end
 ---@param sound Sounding.Audio
 function RandomizedSound:addSoundOption(sound)
     self.sounds[#self.sounds+1] = sound
+end
+
+--------------------------------------------------
+
+--- Creates a sound that always tries to play the closest matching audio to the semitoneShift audio option (the pitch option isn't taken into account).
+--- Note that the inner audio objects played have the semitoneShift option modified so they always play the target pitch.
+--- This means changing pitch options dynamically will overwrite the correct playing pitch instead of just modifying it.
+---@return Sounding.NoteSampledSound
+function sounding.newNoteSampledSound()
+    ---@type Sounding.NoteSampledSound
+    local sound = {
+        customData = {},
+        notes = {},
+        minNote = math.huge,
+        maxNote = -math.huge
+    }
+    return setmetatable(sound, NoteSampledSoundMT)
+end
+
+---@param options? Sounding.AudioOptions
+---@return integer? soundIndex
+function NoteSampledSound:play(options)
+    local notes = self.notes
+    local minNote = self.minNote
+    local maxNote = self.maxNote
+    if minNote > maxNote then return nil end
+
+    local targetNote = options and options.semitoneShift or 0
+    local maxSearchOffset = math.max(math.abs(minNote - targetNote), math.abs(maxNote - targetNote))
+    local searchOffset = 0
+    while searchOffset <= maxSearchOffset do
+        if notes[targetNote - searchOffset] then
+            local note = notes[targetNote - searchOffset]
+
+            options = options or {}
+            options.semitoneShift = searchOffset
+            note:play(options)
+            options.semitoneShift = targetNote
+
+            return targetNote - searchOffset
+        end
+
+        if notes[targetNote + searchOffset] then
+            local note = notes[targetNote + searchOffset]
+
+            options = options or {}
+            options.semitoneShift = -searchOffset
+            note:play(options)
+            options.semitoneShift = targetNote
+
+            return targetNote + searchOffset
+        end
+
+        searchOffset = searchOffset + 1
+    end
+end
+
+function NoteSampledSound:stop()
+    local notes = self.notes
+    for _, note in pairs(notes) do
+        note:stop()
+    end
+end
+
+---@return boolean
+function NoteSampledSound:isPlaying()
+    local notes = self.notes
+    for _, note in pairs(notes) do
+        if note:isPlaying() then return true end
+    end
+    return false
+end
+
+---@param loop boolean
+function NoteSampledSound:setLooping(loop)
+    local notes = self.notes
+    for _, note in pairs(notes) do
+        note:setLooping(loop)
+    end
+end
+
+--- Changes the options for all sounds that are currently playing
+---@param options Sounding.AudioOptions
+function NoteSampledSound:setDynamicOptions(options)
+    local notes = self.notes
+    for shift, note in pairs(notes) do
+        note:setDynamicOptions(options)
+    end
+end
+
+---@param id integer
+---@return Sounding.Audio
+function NoteSampledSound:readId(id)
+    return self.notes[id]
+end
+
+---@return string
+function NoteSampledSound:type()
+    return "NoteSampledSound"
+end
+
+---@param key string
+---@param value any
+function NoteSampledSound:setCustomDataField(key, value)
+    self.customData[key] = value
+end
+
+---@param key string
+---@return any
+function NoteSampledSound:getCustomDataField(key)
+    return self.customData[key]
+end
+
+---@return Sounding.NoteSampledSound
+function NoteSampledSound:clone()
+    local clone = sounding.newNoteSampledSound()
+
+    local notesSelf = self.notes
+    local notesClone = clone.notes
+    for shift, note in pairs(notesSelf) do
+        notesClone[shift] = note:clone()
+    end
+
+    for key in pairs(self.customData) do
+        clone.customData[key] = self.customData[key]
+    end
+
+    return clone
+end
+
+---@return Sounding.NoteSampledSound
+function NoteSampledSound:cloneTiny()
+    local clone = sounding.newNoteSampledSound()
+
+    local notesSelf = self.notes
+    local notesClone = clone.notes
+    for shift, note in pairs(notesSelf) do
+        notesClone[shift] = note:cloneTiny()
+    end
+
+    for key in pairs(self.customData) do
+        clone.customData[key] = self.customData[key]
+    end
+
+    return clone
+end
+
+----------
+
+--- Registers the given sound as a note with the given semitone (0 being no shift from some anchor note, for example middle C).
+--- If there is already a sound with that semitone, it will be overwritten.
+--- 
+--- The sampled sound will own and manage this sound completely,
+--- so make sure to clone it first if you plan on using it elsewhere too.
+---@param semitone integer
+---@param sound Sounding.Audio
+function NoteSampledSound:addNote(semitone, sound)
+    self.notes[semitone] = sound
+    self.minNote = math.min(self.minNote, semitone)
+    self.maxNote = math.max(self.maxNote, semitone)
 end
 
 -- The abstract shared Audio interface -------------------------------------------------------------
