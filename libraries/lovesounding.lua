@@ -91,6 +91,12 @@ local SoundMT = {__index = Sound}
 local RandomizedSound = {}
 local RandomizedSoundMT = {__index = RandomizedSound}
 
+--- A sound that plays all of its audios at once
+---@class Sounding.LayeredSound : Sounding.Audio
+---@field sounds Sounding.Audio[]
+local LayeredSound = {}
+local LayeredSoundMT = {__index = LayeredSound}
+
 --- A sound that tries to play the closest matching audio to the semitoneShift audio option (the pitch option isn't taken into account)
 ---@class Sounding.NoteSampledSound : Sounding.Audio
 ---@field notes table<integer, Sounding.Audio> Not an array, but a table with sparse integer (including negative and zero) keys mapped to the sound for that semitone
@@ -655,6 +661,130 @@ end
 --- so make sure to clone it first if you plan on using it elsewhere too.
 ---@param sound Sounding.Audio
 function RandomizedSound:addSoundOption(sound)
+    self.sounds[#self.sounds+1] = sound
+end
+
+--------------------------------------------------
+
+--- Creates a new sound for playing all of many different `Sounding.Audio`s at once.
+---@param ... Sounding.Audio
+---@return Sounding.LayeredSound
+function sounding.newLayeredSound(...)
+    ---@type Sounding.LayeredSound
+    local sound = {
+        customData = {},
+        sounds = {...}
+    }
+    return setmetatable(sound, LayeredSoundMT)
+end
+
+---@param options? Sounding.AudioOptions
+---@return integer? soundIndex
+function LayeredSound:play(options)
+    local sounds = self.sounds
+    for soundIndex = 1, #sounds do
+        sounds[soundIndex]:play(options)
+    end
+    return 1
+end
+
+function LayeredSound:stop()
+    local sounds = self.sounds
+    for soundIndex = 1, #sounds do
+        sounds[soundIndex]:stop()
+    end
+end
+
+---@return boolean
+function LayeredSound:isPlaying()
+    local sounds = self.sounds
+    for soundIndex = 1, #sounds do
+        if sounds[soundIndex]:isPlaying() then return true end
+    end
+    return false
+end
+
+---@param loop boolean
+function LayeredSound:setLooping(loop)
+    local sounds = self.sounds
+    for soundIndex = 1, #sounds do
+        sounds[soundIndex]:setLooping(loop)
+    end
+end
+
+---@param options Sounding.AudioOptions
+function LayeredSound:setDynamicOptions(options)
+    local sounds = self.sounds
+    for soundIndex = 1, #sounds do
+        sounds[soundIndex]:setDynamicOptions(options)
+    end
+end
+
+---@param id integer
+---@return Sounding.Audio
+function LayeredSound:readId(id)
+    return self.sounds[id]
+end
+
+---@return string
+function LayeredSound:type()
+    return "LayeredSound"
+end
+
+---@param key string
+---@param value any
+function LayeredSound:setCustomDataField(key, value)
+    self.customData[key] = value
+end
+
+---@param key string
+---@return any
+function LayeredSound:getCustomDataField(key)
+    return self.customData[key]
+end
+
+---@return Sounding.LayeredSound
+function LayeredSound:clone()
+    local clone = sounding.newLayeredSound()
+
+    local soundsSelf = self.sounds
+    local soundsClone = clone.sounds
+    for soundIndex = 1, #soundsSelf do
+        soundsClone[soundIndex] = soundsSelf[soundIndex]:clone()
+    end
+
+    for key in pairs(self.customData) do
+        clone.customData[key] = self.customData[key]
+    end
+
+    return clone
+end
+
+---@return Sounding.LayeredSound
+function LayeredSound:cloneTiny()
+    local clone = sounding.newLayeredSound()
+
+    local soundsSelf = self.sounds
+    local soundsClone = clone.sounds
+    for soundIndex = 1, #soundsSelf do
+        soundsClone[soundIndex] = soundsSelf[soundIndex]:cloneTiny()
+    end
+
+    for key in pairs(self.customData) do
+        clone.customData[key] = self.customData[key]
+    end
+
+    return clone
+end
+
+----------
+
+--- Adds a new option for the sound to layer.
+--- 
+--- The layered sound will own and manage this sound completely,
+--- so make sure to clone it first if you plan on using it elsewhere too.
+---@param sound Sounding.Audio
+function LayeredSound:addSoundOption(sound)
     self.sounds[#self.sounds+1] = sound
 end
 
