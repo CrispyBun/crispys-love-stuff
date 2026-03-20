@@ -113,9 +113,7 @@ local NoteSampledSoundMT = {__index = NoteSampledSound}
 function sounding.play(soundId, options)
     local sound = sounding.registeredSounds[soundId]
     if not sound then error(string.format("There is no registered sound with the ID '%s'", soundId), 2) end
-
     sound:play(options)
-    if sounding.audioPlayedCallback then sounding.audioPlayedCallback(sound) end
 end
 
 --- Like `play()`, but doesn't error if an audio under the given soundId is not registered (and just does nothing instead)
@@ -148,9 +146,23 @@ function sounding.register(soundId, audio)
 end
 
 --- An optional callback function can be put here
---- to be called each time an audio is played using `play()` or `tryPlay()`.
----@type fun(audio: Sounding.Audio)?
+--- to be called each time any audio is played.
+--- 
+--- The `audio` parameter is the audio `play()` was actually called on,
+--- `actualPlayedAudio` is the audio which actually produced the sound.
+--- These may be the same.
+--- 
+--- For some audios, this callback may be triggered multiple times.
+---@type fun(audio: Sounding.Audio, actualPlayedAudio: Sounding.Audio)?
 sounding.audioPlayedCallback = nil
+
+--- An optional function can be put here
+--- which will be called every time any audio is played
+--- and the returned value will be used to multiply its volume.
+--- 
+--- Parameters are the same as in `audioPlayedCallback`.
+---@type (fun(audio: Sounding.Audio, actualPlayedAudio: Sounding.Audio): number)?
+sounding.getGlobalVolumeMultiplier = nil
 
 ---@type table<string, Sounding.Audio>
 sounding.registeredSounds = {}
@@ -193,8 +205,10 @@ end
 
 --- Plays the sound and returns the id of the source or nil if no sound was played.
 ---@param options? Sounding.AudioOptions
+---@param rootAudio? Sounding.Audio
 ---@return integer? sourceIndex
-function Sound:play(options)
+function Sound:play(options, rootAudio)
+    rootAudio = rootAudio or self
     local sources = self.sources
 
     local nextFreeSource = self.nextFreeSource
@@ -212,8 +226,10 @@ function Sound:play(options)
         source:stop()
     end
 
-    self:applySourceOptions(source, options)
+    self:applySourceOptions(source, rootAudio, options)
     if not source:play() then return nil end
+
+    if sounding.audioPlayedCallback then sounding.audioPlayedCallback(rootAudio, self) end
 
     self.nextFreeSource = nextFreeSource + 1
     return nextFreeSource
@@ -248,11 +264,13 @@ end
 
 --- Changes the options for all sources that are currently playing
 ---@param options Sounding.AudioOptions
-function Sound:setDynamicOptions(options)
+---@param rootAudio? Sounding.Audio
+function Sound:setDynamicOptions(options, rootAudio)
+    rootAudio = rootAudio or self
     local sources = self.sources
     for sourceIndex = 1, self.maxSources do
         local source = sources[sourceIndex]
-        if source and source:isPlaying() then self:applySourceOptions(source, options, true) end
+        if source and source:isPlaying() then self:applySourceOptions(source, rootAudio, options, true) end
     end
 end
 
@@ -405,22 +423,24 @@ sounding.semitoneShiftToPitch = semitoneShiftToPitch
 
 ---@private
 ---@param source love.Source
+---@param rootAudio Sounding.Audio
 ---@param options Sounding.AudioOptions?
 ---@param optionsAreDynamic? boolean
-function Sound:applySourceOptions(source, options, optionsAreDynamic)
-    self:applySourcePitch(source, options, optionsAreDynamic)
-    self:applySourceVolume(source, options, optionsAreDynamic)
-    self:applySourcePosition(source, options,optionsAreDynamic)
-    self:applySourceVelocity(source, options, optionsAreDynamic)
-    self:applySourceFilter(source, options, optionsAreDynamic)
-    self:applySourceEffect(source, options, optionsAreDynamic)
+function Sound:applySourceOptions(source, rootAudio, options, optionsAreDynamic)
+    self:applySourcePitch(source, rootAudio, options, optionsAreDynamic)
+    self:applySourceVolume(source, rootAudio, options, optionsAreDynamic)
+    self:applySourcePosition(source, rootAudio, options,optionsAreDynamic)
+    self:applySourceVelocity(source, rootAudio, options, optionsAreDynamic)
+    self:applySourceFilter(source, rootAudio, options, optionsAreDynamic)
+    self:applySourceEffect(source, rootAudio, options, optionsAreDynamic)
 end
 
 ---@private
 ---@param source love.Source
+---@param rootAudio Sounding.Audio
 ---@param options Sounding.AudioOptions?
 ---@param optionsAreDynamic? boolean
-function Sound:applySourcePitch(source, options, optionsAreDynamic)
+function Sound:applySourcePitch(source, rootAudio, options, optionsAreDynamic)
     local pitch = self.basePitch
     local randomPitchScale = self.randomPitchScale
 
@@ -443,21 +463,24 @@ end
 
 ---@private
 ---@param source love.Source
+---@param rootAudio Sounding.Audio
 ---@param options Sounding.AudioOptions?
 ---@param optionsAreDynamic? boolean
-function Sound:applySourceVolume(source, options, optionsAreDynamic)
+function Sound:applySourceVolume(source, rootAudio, options, optionsAreDynamic)
     if optionsAreDynamic and (not options or not options.volume) then return end
 
     local volume = self.baseVolume
+    volume = volume * (sounding.getGlobalVolumeMultiplier and sounding.getGlobalVolumeMultiplier(rootAudio, self) or 1)
     volume = volume * (options and options.volume or 1)
     source:setVolume(volume)
 end
 
 ---@private
 ---@param source love.Source
+---@param rootAudio Sounding.Audio
 ---@param options Sounding.AudioOptions?
 ---@param optionsAreDynamic? boolean
-function Sound:applySourcePosition(source, options, optionsAreDynamic)
+function Sound:applySourcePosition(source, rootAudio, options, optionsAreDynamic)
     if not self.allowSpatialOptions then return end
 
     local xDefault = 0
@@ -474,9 +497,10 @@ end
 
 ---@private
 ---@param source love.Source
+---@param rootAudio Sounding.Audio
 ---@param options Sounding.AudioOptions?
 ---@param optionsAreDynamic? boolean
-function Sound:applySourceVelocity(source, options, optionsAreDynamic)
+function Sound:applySourceVelocity(source, rootAudio, options, optionsAreDynamic)
     if not self.allowSpatialOptions then return end
 
     local xDefault = 0
@@ -493,9 +517,10 @@ end
 
 ---@private
 ---@param source love.Source
+---@param rootAudio Sounding.Audio
 ---@param options Sounding.AudioOptions?
 ---@param optionsAreDynamic? boolean
-function Sound:applySourceFilter(source, options, optionsAreDynamic)
+function Sound:applySourceFilter(source, rootAudio, options, optionsAreDynamic)
     if optionsAreDynamic then
         if not options then return end
         if options.filterEnabled == nil then return end
@@ -511,9 +536,10 @@ end
 
 ---@private
 ---@param source love.Source
+---@param rootAudio Sounding.Audio
 ---@param options Sounding.AudioOptions?
 ---@param optionsAreDynamic? boolean
-function Sound:applySourceEffect(source, options, optionsAreDynamic)
+function Sound:applySourceEffect(source, rootAudio, options, optionsAreDynamic)
     if not optionsAreDynamic then
         local effects = source:getActiveEffects()
         for effectIndex = 1, #effects do
@@ -553,13 +579,14 @@ function sounding.newRandomizedSound(...)
 end
 
 ---@param options? Sounding.AudioOptions
+---@param rootAudio? Sounding.Audio
 ---@return integer? soundIndex
-function RandomizedSound:play(options)
+function RandomizedSound:play(options, rootAudio)
     local sounds = self.sounds
     if #sounds == nil then return nil end
     local soundIndex = sounding.randomFn(#sounds)
 
-    sounds[soundIndex]:play(options)
+    sounds[soundIndex]:play(options, rootAudio or self)
     return soundIndex
 end
 
@@ -589,10 +616,11 @@ end
 
 --- Changes the options for all sounds that are currently playing
 ---@param options Sounding.AudioOptions
-function RandomizedSound:setDynamicOptions(options)
+---@param rootAudio? Sounding.Audio
+function RandomizedSound:setDynamicOptions(options, rootAudio)
     local sounds = self.sounds
     for soundIndex = 1, #sounds do
-        sounds[soundIndex]:setDynamicOptions(options)
+        sounds[soundIndex]:setDynamicOptions(options, rootAudio or self)
     end
 end
 
@@ -667,6 +695,7 @@ end
 --------------------------------------------------
 
 --- Creates a new sound for playing all of many different `Sounding.Audio`s at once.
+--- Playing this also triggers the audio played callback many times, once for each played held audio object.
 ---@param ... Sounding.Audio
 ---@return Sounding.LayeredSound
 function sounding.newLayeredSound(...)
@@ -679,11 +708,12 @@ function sounding.newLayeredSound(...)
 end
 
 ---@param options? Sounding.AudioOptions
+---@param rootAudio? Sounding.Audio
 ---@return integer? soundIndex
-function LayeredSound:play(options)
+function LayeredSound:play(options, rootAudio)
     local sounds = self.sounds
     for soundIndex = 1, #sounds do
-        sounds[soundIndex]:play(options)
+        sounds[soundIndex]:play(options, rootAudio or self)
     end
     return 1
 end
@@ -713,10 +743,11 @@ function LayeredSound:setLooping(loop)
 end
 
 ---@param options Sounding.AudioOptions
-function LayeredSound:setDynamicOptions(options)
+---@param rootAudio? Sounding.Audio
+function LayeredSound:setDynamicOptions(options, rootAudio)
     local sounds = self.sounds
     for soundIndex = 1, #sounds do
-        sounds[soundIndex]:setDynamicOptions(options)
+        sounds[soundIndex]:setDynamicOptions(options, rootAudio or self)
     end
 end
 
@@ -806,8 +837,9 @@ function sounding.newNoteSampledSound()
 end
 
 ---@param options? Sounding.AudioOptions
+---@param rootAudio? Sounding.Audio
 ---@return integer? soundIndex
-function NoteSampledSound:play(options)
+function NoteSampledSound:play(options, rootAudio)
     local notes = self.notes
     local minNote = self.minNote
     local maxNote = self.maxNote
@@ -822,7 +854,7 @@ function NoteSampledSound:play(options)
 
             options = options or {}
             options.semitoneShift = searchOffset
-            note:play(options)
+            note:play(options, rootAudio or self)
             options.semitoneShift = targetNote
 
             return targetNote - searchOffset
@@ -833,7 +865,7 @@ function NoteSampledSound:play(options)
 
             options = options or {}
             options.semitoneShift = -searchOffset
-            note:play(options)
+            note:play(options, rootAudio or self)
             options.semitoneShift = targetNote
 
             return targetNote + searchOffset
@@ -869,10 +901,11 @@ end
 
 --- Changes the options for all sounds that are currently playing
 ---@param options Sounding.AudioOptions
-function NoteSampledSound:setDynamicOptions(options)
+---@param rootAudio? Sounding.Audio
+function NoteSampledSound:setDynamicOptions(options, rootAudio)
     local notes = self.notes
     for shift, note in pairs(notes) do
-        note:setDynamicOptions(options)
+        note:setDynamicOptions(options, rootAudio or self)
     end
 end
 
@@ -950,10 +983,14 @@ end
 
 -- The abstract shared Audio interface -------------------------------------------------------------
 
---- Plays the audio and returns some sort of identifier for it (if applicable)
+--- Plays the audio and returns some sort of identifier for it (if applicable).
+--- 
+--- The `rootAudio` parameter is used (internally) to trigger callbacks on the correct topmost audio object that got triggered.
+--- You most likely don't need to worry about it.
 ---@param options? Sounding.AudioOptions
+---@param rootAudio? Sounding.Audio
 ---@return integer? id
-function Audio:play(options)
+function Audio:play(options, rootAudio)
     return nil
 end
 
@@ -978,7 +1015,8 @@ end
 
 --- Changes the options for any audio that's already playing (does not affect audio played from the next call to `play()`)
 ---@param options Sounding.AudioOptions
-function Audio:setDynamicOptions(options)
+---@param rootAudio? Sounding.Audio
+function Audio:setDynamicOptions(options, rootAudio)
 end
 
 --- Returns the object associated with the id returned by a call to `play`.
