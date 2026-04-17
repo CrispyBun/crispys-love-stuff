@@ -6,7 +6,7 @@
 --[[
 MIT License
 
-Copyright (c) 2025 Ava "CrispyBun" Špráchalů
+Copyright (c) 2025-2026 Ava "CrispyBun" Špráchalů
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -127,6 +127,13 @@ function SceneManager:unregisterScene(name)
     self.scenes[name] = nil
 end
 SceneManager.removeScene = SceneManager.unregisterScene
+
+--- Unregisters all previously registered scenes from the manager.
+function SceneManager:unregisterAllScenes()
+    for name in pairs(self.scenes) do
+        self:unregisterScene(name)
+    end
+end
 
 --- Sets the current scene.  
 --- The optional vararg will be passed into the `load` event callback of the scene, if there is one.
