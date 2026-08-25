@@ -44,6 +44,21 @@ local slice = {}
 local SlicedTexture = {}
 local SlicedTextureMT = {__index = SlicedTexture}
 
+---@class Slice.BatchedSlicedTexture
+---@field slicedTexture Slice.SlicedTexture
+---@field spriteBatch love.SpriteBatch
+---@field extraQuads love.Quad[]
+---@field nextExtraQuadIndex integer
+---@field x number
+---@field y number
+---@field width number
+---@field height number
+---@field textureScale? number
+local BatchedSlicedTexture = {}
+local BatchedSlicedTextureMT = {__index = BatchedSlicedTexture}
+
+--------------------------------
+
 --- Creates a new sliced texture from 1 texture (where the full texture is the rectangle to be 9-sliced)
 --- and the sizes of the top-left and bottom-right corners (the sizes of the other slices will be inferred from those).
 ---@param texture love.Texture
@@ -57,6 +72,9 @@ function slice.newSlicedTexture(texture, topLeftWidth, topLeftHeight, bottomRigh
 
     local centerWidth = textureWidth - topLeftWidth - bottomRightWidth
     local centerHeight = textureHeight - topLeftHeight - bottomRightHeight
+
+    if topLeftWidth + bottomRightWidth >= textureWidth then error("topLeftWidth and bottomRightWidth summed must be less than texture width", 2) end
+    if topLeftHeight + bottomRightHeight >= textureHeight then error("topLeftHeight and bottomRightHeight summed must be less than texture height", 2) end
 
     local quadTL = love.graphics.newQuad(0, 0, topLeftWidth, topLeftHeight, texture)
     local quadT = love.graphics.newQuad(topLeftWidth, 0, centerWidth, topLeftHeight, texture)
@@ -103,12 +121,32 @@ end
 
 --------------------------------
 
+--- Creates a new BatchedSlicedTexture instance from this SlicedTexture
+--- which batches the quads and sprites for much faster drawing (even more so if drawn with the same parameters over and over).
+---@param spriteBatchUsage? love.SpriteBatchUsage
+function SlicedTexture:makeBatched(spriteBatchUsage)
+    ---@type Slice.BatchedSlicedTexture
+    local batched = {
+        slicedTexture = self,
+        spriteBatch = love.graphics.newSpriteBatch(self.texture, 1000, spriteBatchUsage or "static"),
+        extraQuads = {},
+        nextExtraQuadIndex = 1,
+        x = 0,
+        y = 0,
+        width = 0,
+        height = 0,
+        textureScale = 0
+    }
+    return setmetatable(batched, BatchedSlicedTextureMT)
+end
+
 ---@param x number
 ---@param y number
 ---@param width number
 ---@param height number
 ---@param textureScale? number
-function SlicedTexture:draw(x, y, width, height, textureScale)
+---@param _batchedInstance? Slice.BatchedSlicedTexture
+function SlicedTexture:draw(x, y, width, height, textureScale, _batchedInstance)
     textureScale = textureScale or 1
 
     local _, _, topLeftWidth, topLeftHeight = self.quadTL:getViewport()
@@ -129,49 +167,52 @@ function SlicedTexture:draw(x, y, width, height, textureScale)
     width = math.max(width, minWidth)
     height = math.max(height, minHeight)
 
-    -- TODO:
-    -- this whole thing should be spritebatched,
-    -- but that won't be compatible with the current trimming i do with scissor,
-    -- so a special class that holds a spritebatch and extra quads will prolly be necessary for that.
-
     local texture = self.texture
+    if _batchedInstance then _batchedInstance.spriteBatch:clear() end
+    local textureOrBatchedInstance = _batchedInstance or texture
 
     -- excuse how awfully ugly this is lol
 
     -- Corners
-    love.graphics.draw(texture, self.quadTL, x, y, 0, textureScale, textureScale)
-    love.graphics.draw(texture, self.quadTR, x + width - bottomRightWidth, y, 0, textureScale, textureScale)
-    love.graphics.draw(texture, self.quadBR, x + width - bottomRightWidth, y + height - bottomRightHeight, 0, textureScale, textureScale)
-    love.graphics.draw(texture, self.quadBL, x, y + height - bottomRightHeight, 0, textureScale, textureScale)
+    self:drawPart(textureOrBatchedInstance, self.quadTL, x, y, textureScale)
+    self:drawPart(textureOrBatchedInstance, self.quadTR, x + width - bottomRightWidth, y, textureScale)
+    self:drawPart(textureOrBatchedInstance, self.quadBR, x + width - bottomRightWidth, y + height - bottomRightHeight, textureScale)
+    self:drawPart(textureOrBatchedInstance, self.quadBL, x, y + height - bottomRightHeight, textureScale)
 
     -- Top + bottom
     local horizontalProgress = x + topLeftWidth
     local horizontalRemaining = width - topLeftWidth - bottomRightWidth
     while horizontalRemaining > 0 do
-        local sx, sy, sw, sh = love.graphics.getScissor()
-        if centerWidth > horizontalRemaining then love.graphics.setScissor(horizontalProgress, y, horizontalRemaining, height) end
+        local scissorX, scissorY, scissorW, scissorH
+        if centerWidth > horizontalRemaining then
+            scissorX = horizontalProgress
+            scissorY = y
+            scissorW = horizontalRemaining
+            scissorH = height
+        end
 
-        love.graphics.draw(texture, self.quadT, horizontalProgress, y, 0, textureScale, textureScale)
-        love.graphics.draw(texture, self.quadB, horizontalProgress, y + height - bottomRightHeight, 0, textureScale, textureScale)
+        self:drawPart(textureOrBatchedInstance, self.quadT, horizontalProgress, y, textureScale, nil, scissorX, scissorY, scissorW, scissorH)
+        self:drawPart(textureOrBatchedInstance, self.quadB, horizontalProgress, y + height - bottomRightHeight, textureScale, nil, scissorX, scissorY, scissorW, scissorH)
         horizontalProgress = horizontalProgress + centerWidth
         horizontalRemaining = horizontalRemaining - centerWidth
-
-        love.graphics.setScissor(sx, sy, sw, sh)
     end
 
     -- Left + right
     local verticalProgress = y + topLeftHeight
     local verticalRemaining = height - topLeftHeight - bottomRightHeight
     while verticalRemaining > 0 do
-        local sx, sy, sw, sh = love.graphics.getScissor()
-        if centerHeight > verticalRemaining then love.graphics.setScissor(x, verticalProgress, width, verticalRemaining) end
+        local scissorX, scissorY, scissorW, scissorH
+        if centerHeight > verticalRemaining then
+            scissorX = x
+            scissorY = verticalProgress
+            scissorW = width
+            scissorH = verticalRemaining
+        end
 
-        love.graphics.draw(texture, self.quadL, x, verticalProgress, 0, textureScale, textureScale)
-        love.graphics.draw(texture, self.quadR, x + width - bottomRightWidth, verticalProgress, 0, textureScale, textureScale)
+        self:drawPart(textureOrBatchedInstance, self.quadL, x, verticalProgress, textureScale, nil, scissorX, scissorY, scissorW, scissorH)
+        self:drawPart(textureOrBatchedInstance, self.quadR, x + width - bottomRightWidth, verticalProgress, textureScale, nil, scissorX, scissorY, scissorW, scissorH)
         verticalProgress = verticalProgress + centerHeight
         verticalRemaining = verticalRemaining - centerHeight
-
-        love.graphics.setScissor(sx, sy, sw, sh)
     end
 
     -- Center
@@ -181,18 +222,114 @@ function SlicedTexture:draw(x, y, width, height, textureScale)
         verticalProgress = y + topLeftHeight
         verticalRemaining = height - topLeftHeight - bottomRightHeight
         while verticalRemaining > 0 do
-            local sx, sy, sw, sh = love.graphics.getScissor()
-            love.graphics.setScissor(horizontalProgress, verticalProgress, horizontalRemaining, verticalRemaining)
+            local scissorX, scissorY, scissorW, scissorH
+            if centerWidth > horizontalRemaining or centerHeight > verticalRemaining then
+                scissorX = horizontalProgress
+                scissorY = verticalProgress
+                scissorW = horizontalRemaining
+                scissorH = verticalRemaining
+            end
 
-            love.graphics.draw(texture, self.quadC, horizontalProgress, verticalProgress, 0, textureScale, textureScale)
+            self:drawPart(textureOrBatchedInstance, self.quadC, horizontalProgress, verticalProgress, textureScale, nil, scissorX, scissorY, scissorW, scissorH)
             verticalProgress = verticalProgress + centerHeight
             verticalRemaining = verticalRemaining - centerHeight
-
-            love.graphics.setScissor(sx, sy, sw, sh)
         end
         horizontalProgress = horizontalProgress + centerWidth
         horizontalRemaining = horizontalRemaining - centerWidth
     end
+
+    if _batchedInstance then love.graphics.draw(_batchedInstance.spriteBatch) end
+end
+
+local function intersectViewports(x1, y1, w1, h1, x2, y2, w2, h2)
+    local xStart = math.max(x1, x2)
+    local yStart = math.max(y1, y2)
+    local xEnd = math.min(x1 + w1, x2 + w2)
+    local yEnd = math.min(y1 + h1, y2 + h2)
+    return xStart, yStart, xEnd - xStart, yEnd - yStart
+end
+
+---@package
+---@param textureOrBatchedInstance love.Texture|Slice.BatchedSlicedTexture
+---@param quad love.Quad
+---@param x number
+---@param y number
+---@param scale number
+---@param color? number[] todo
+---@param scissorX? number
+---@param scissorY? number
+---@param scissorW? number
+---@param scissorH? number
+function SlicedTexture:drawPart(textureOrBatchedInstance, quad, x, y, scale, color, scissorX, scissorY, scissorW, scissorH)
+    if type(textureOrBatchedInstance) == "table" then
+        local extraQuad
+        if scissorX and scissorY and scissorW and scissorH then
+            local quadX, quadY, quadW, quadH = quad:getViewport()
+            quadW = quadW * scale
+            quadH = quadH * scale
+            local newQuadX, newQuadY, newQuadW, newQuadH = intersectViewports(scissorX - x + quadX, scissorY - y + quadY, scissorW, scissorH, quadX, quadY, quadW, quadH)
+            newQuadW = newQuadW / scale
+            newQuadH = newQuadH / scale
+            extraQuad = textureOrBatchedInstance:getExtraQuad(newQuadX, newQuadY, newQuadW, newQuadH)
+        end
+        textureOrBatchedInstance.spriteBatch:add(extraQuad or quad, x, y, 0, scale, scale)
+    else
+        local sx, sy, sw, sh = love.graphics.getScissor()
+        if scissorX and scissorY and scissorW and scissorH then
+            love.graphics.setScissor(scissorX, scissorY, scissorW, scissorH)
+        end
+        love.graphics.draw(textureOrBatchedInstance--[[@as love.Texture]], quad, x, y, 0, scale, scale)
+        love.graphics.setScissor(sx, sy, sw, sh)
+    end
+end
+
+--------------------------------
+
+---@param x number
+---@param y number
+---@param width number
+---@param height number
+---@param textureScale? number
+function BatchedSlicedTexture:draw(x, y, width, height, textureScale)
+    if  x == self.x and
+        y == self.y and
+        width == self.width and
+        height == self.height and
+        textureScale == self.textureScale
+    then
+        love.graphics.draw(self.spriteBatch)
+        return
+    end
+
+    self.nextExtraQuadIndex = 1
+
+    self.x = x
+    self.y = y
+    self.width = width
+    self.height = height
+    self.textureScale = textureScale
+
+    return self.slicedTexture:draw(x, y, width, height, textureScale, self)
+end
+
+---@package
+---@param x number
+---@param y number
+---@param width number
+---@param height number
+---@return love.Quad
+function BatchedSlicedTexture:getExtraQuad(x, y, width, height)
+    local nextIndex = self.nextExtraQuadIndex
+    local quads = self.extraQuads
+    self.nextExtraQuadIndex = self.nextExtraQuadIndex + 1
+
+    if quads[nextIndex] then
+        quads[nextIndex]:setViewport(x, y, width, height, self.slicedTexture.texture:getDimensions())
+        return quads[nextIndex]
+    end
+
+    quads[nextIndex] = love.graphics.newQuad(x, y, width, height, self.slicedTexture.texture)
+    return quads[nextIndex]
 end
 
 return slice
