@@ -191,8 +191,8 @@ function SlicedTexture:draw(x, y, width, height, textureScale, _batchedInstance)
             scissorH = height
         end
 
-        self:drawPart(textureOrBatchedInstance, self.quadT, horizontalProgress, y, textureScale, nil, scissorX, scissorY, scissorW, scissorH)
-        self:drawPart(textureOrBatchedInstance, self.quadB, horizontalProgress, y + height - bottomRightHeight, textureScale, nil, scissorX, scissorY, scissorW, scissorH)
+        self:drawPart(textureOrBatchedInstance, self.quadT, horizontalProgress, y, textureScale, scissorX, scissorY, scissorW, scissorH)
+        self:drawPart(textureOrBatchedInstance, self.quadB, horizontalProgress, y + height - bottomRightHeight, textureScale, scissorX, scissorY, scissorW, scissorH)
         horizontalProgress = horizontalProgress + centerWidth
         horizontalRemaining = horizontalRemaining - centerWidth
     end
@@ -209,8 +209,8 @@ function SlicedTexture:draw(x, y, width, height, textureScale, _batchedInstance)
             scissorH = verticalRemaining
         end
 
-        self:drawPart(textureOrBatchedInstance, self.quadL, x, verticalProgress, textureScale, nil, scissorX, scissorY, scissorW, scissorH)
-        self:drawPart(textureOrBatchedInstance, self.quadR, x + width - bottomRightWidth, verticalProgress, textureScale, nil, scissorX, scissorY, scissorW, scissorH)
+        self:drawPart(textureOrBatchedInstance, self.quadL, x, verticalProgress, textureScale, scissorX, scissorY, scissorW, scissorH)
+        self:drawPart(textureOrBatchedInstance, self.quadR, x + width - bottomRightWidth, verticalProgress, textureScale, scissorX, scissorY, scissorW, scissorH)
         verticalProgress = verticalProgress + centerHeight
         verticalRemaining = verticalRemaining - centerHeight
     end
@@ -230,7 +230,7 @@ function SlicedTexture:draw(x, y, width, height, textureScale, _batchedInstance)
                 scissorH = verticalRemaining
             end
 
-            self:drawPart(textureOrBatchedInstance, self.quadC, horizontalProgress, verticalProgress, textureScale, nil, scissorX, scissorY, scissorW, scissorH)
+            self:drawPart(textureOrBatchedInstance, self.quadC, horizontalProgress, verticalProgress, textureScale, scissorX, scissorY, scissorW, scissorH)
             verticalProgress = verticalProgress + centerHeight
             verticalRemaining = verticalRemaining - centerHeight
         end
@@ -255,12 +255,11 @@ end
 ---@param x number
 ---@param y number
 ---@param scale number
----@param color? number[] todo
 ---@param scissorX? number
 ---@param scissorY? number
 ---@param scissorW? number
 ---@param scissorH? number
-function SlicedTexture:drawPart(textureOrBatchedInstance, quad, x, y, scale, color, scissorX, scissorY, scissorW, scissorH)
+function SlicedTexture:drawPart(textureOrBatchedInstance, quad, x, y, scale, scissorX, scissorY, scissorW, scissorH)
     if type(textureOrBatchedInstance) == "table" then
         local extraQuad
         if scissorX and scissorY and scissorW and scissorH then
