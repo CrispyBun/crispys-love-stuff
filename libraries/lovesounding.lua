@@ -97,13 +97,23 @@ local RandomizedSoundMT = {__index = RandomizedSound}
 local LayeredSound = {}
 local LayeredSoundMT = {__index = LayeredSound}
 
---- A sound that tries to play the closest matching audio to the semitoneShift audio option (the pitch option isn't taken into account)
----@class Sounding.NoteSampledSound : Sounding.Audio
----@field notes table<integer, Sounding.Audio> Not an array, but a table with sparse integer (including negative and zero) keys mapped to the sound for that semitone
----@field minNote integer
----@field maxNote integer
-local NoteSampledSound = {}
-local NoteSampledSoundMT = {__index = NoteSampledSound}
+--- A sound that can modify the set audio option assigned to it when asked to be played
+---@class Sounding.OptionRemappingSound : Sounding.Audio
+---@field sound Sounding.Audio The sound that actually handles the playing of the newly modified options
+---@field optionName string
+---@field optionBaseValue unknown
+---@field optionReferenceValue unknown
+---@field remappingFn fun(optionName: string, optionCurrentValue: unknown, optionReferenceValue: unknown, customData: table<string, any>): unknown The function that returns the remapped option
+local OptionRemappingSound = {}
+local OptionRemappingSoundMT = {__index = OptionRemappingSound}
+
+--- A sound that tries to play the closest matching defined audio to the configured numeric-value audio option
+---@class Sounding.OptionTargetedSound : Sounding.Audio
+---@field sounds ([Sounding.Audio, number])[] The sounds and their assigned value, sorted
+---@field optionName string
+---@field optionBaseValue number
+local OptionTargetedSound = {}
+local OptionTargetedSoundMT = {__index = OptionTargetedSound}
 
 -- Main interface ----------------------------------------------------------------------------------
 
@@ -179,7 +189,7 @@ function sounding.newSound(source)
         baseSource = source,
         sources = {},
         nextFreeSource = 1,
-        maxSources = 5,
+        maxSources = 3,
         sourcePriorityMode = "stop_old",
         allowSpatialOptions = true,
         basePitch = 1,
@@ -821,125 +831,252 @@ end
 
 --------------------------------------------------
 
---- Creates a sound that always tries to play the closest matching audio to the semitoneShift audio option (the pitch option isn't taken into account).
---- Note that the inner audio objects played have the semitoneShift option modified so they always play the target pitch.
---- This means changing pitch options dynamically will overwrite the correct playing pitch instead of just modifying it.
----@return Sounding.NoteSampledSound
-function sounding.newNoteSampledSound()
-    ---@type Sounding.NoteSampledSound
+local function defaultRemappingFn(optionName, optionCurrentValue, optionReferenceValue, customData)
+    if type(optionCurrentValue) == "number" and type(optionReferenceValue) == "number" then return optionCurrentValue - optionReferenceValue end
+    return optionReferenceValue
+end
+
+--- Creates a sound that can remap one given sound option each time it's played.
+--- 
+--- For example, it can make the sound always play at double the otherwise expected volume.
+--- 
+--- If the remapping function isn't configured,
+--- the default one tries to set the option to be linearly relative to the configured reference value
+--- (e.g. if the base value is 1 and the audio is trying to play at value 3, it actually plays with the value set to 2).
+--- If the base value isn't numeric, it is simply set to the base value instead.
+---@param playbackSound Sounding.Audio The sound that will take care of the actual playback once the option has been re-mapped (as with other wrapped sounds, this audio is fully owned by the remapping sound)
+---@return Sounding.OptionRemappingSound
+function sounding.newOptionRemappingSound(playbackSound)
+    ---@type Sounding.OptionRemappingSound
     local sound = {
         customData = {},
-        notes = {},
-        minNote = math.huge,
-        maxNote = -math.huge
+        sound = playbackSound,
+        optionName = "volume",
+        optionBaseValue = 1,
+        optionReferenceValue = 1,
+        remappingFn = defaultRemappingFn
     }
-    return setmetatable(sound, NoteSampledSoundMT)
+    return setmetatable(sound, OptionRemappingSoundMT)
+end
+
+---@param options? Sounding.AudioOptions
+---@param rootAudio? Sounding.Audio
+---@return integer 1
+function OptionRemappingSound:play(options, rootAudio)
+    local optionName = self.optionName
+
+    options = options or {}
+    local originalValue = options[optionName]
+    local fedValue = originalValue == nil and self.optionBaseValue or originalValue
+
+    options[optionName] = self.remappingFn(optionName, fedValue, self.optionReferenceValue, self.customData)
+    self.sound:play(options, rootAudio or self)
+
+    options[optionName] = originalValue
+    return 1
+end
+
+function OptionRemappingSound:stop()
+    self.sound:stop()
+end
+
+---@return boolean
+function OptionRemappingSound:isPlaying()
+    return self.sound:isPlaying()
+end
+
+---@param loop boolean
+function OptionRemappingSound:setLooping(loop)
+    self.sound:setLooping(loop)
+end
+
+---@param options Sounding.AudioOptions
+---@param rootAudio? Sounding.Audio
+function OptionRemappingSound:setDynamicOptions(options, rootAudio)
+    self.sound:setDynamicOptions(options, rootAudio or self)
+end
+
+---@param id integer
+---@return Sounding.Audio
+function OptionRemappingSound:readId(id)
+    return self.sound
+end
+
+---@return string
+function OptionRemappingSound:type()
+    return "OptionRemappingSound"
+end
+
+---@param key string
+---@param value any
+function OptionRemappingSound:setCustomDataField(key, value)
+    self.customData[key] = value
+end
+
+---@param key string
+---@return any
+function OptionRemappingSound:getCustomDataField(key)
+    return self.customData[key]
+end
+
+---@return Sounding.OptionRemappingSound
+function OptionRemappingSound:clone()
+    local clone = sounding.newOptionRemappingSound(self.sound:clone())
+    clone.optionName = self.optionName
+    clone.optionBaseValue = self.optionBaseValue
+    clone.optionReferenceValue = self.optionReferenceValue
+    clone.remappingFn = self.remappingFn
+
+    for key in pairs(self.customData) do
+        clone.customData[key] = self.customData[key]
+    end
+
+    return clone
+end
+
+---@return Sounding.OptionRemappingSound
+function OptionRemappingSound:cloneTiny()
+    local clone = sounding.newOptionRemappingSound(self.sound:cloneTiny())
+    clone.optionName = self.optionName
+    clone.optionBaseValue = self.optionBaseValue
+    clone.optionReferenceValue = self.optionReferenceValue
+    clone.remappingFn = self.remappingFn
+
+    for key in pairs(self.customData) do
+        clone.customData[key] = self.customData[key]
+    end
+
+    return clone
+end
+
+----------
+
+--- Configures the option that gets targeted.
+--- 
+--- The `baseValue` is the value that the option is considered to have if it hasn't been set (this is useful to set as the neutral value, e.g. `1` for audio). Can be nil.
+--- The `referenceValue` is the value that gets passed to the remapping function in case it needs a configured reference to use for whatever reason. Can be nil.
+--- 
+--- The remapping function should probably be configured alongside this.
+---@param name string
+---@param baseValue unknown
+---@param referenceValue unknown
+function OptionRemappingSound:configureOption(name, baseValue, referenceValue)
+    self.optionName = name
+    self.optionBaseValue = baseValue
+    self.optionReferenceValue = referenceValue
+end
+
+--- Configures the function that re-maps the configured option. It should return the new value for the option.
+---@param remappingFn fun(optionName: string, optionCurrentValue: unknown, optionReferenceValue: unknown, customData: table<string, any>): unknown
+function OptionRemappingSound:configureRemappingFn(remappingFn)
+    self.remappingFn = remappingFn
+end
+
+--------------------------------------------------
+
+--- Creates a sound that always tries to play the closest matching sound to the configured numeric-value audio option.
+--- 
+--- When adding an audio to this sound, you define its value for that audio option. Maybe the configured option is volume, and you say the added sound has volume 0.5, for example.
+--- Then, when a sound is requested to play with the volume audio option set,
+--- all the audios in this sound are searched to play the closest matching one (so if the volume is set to 0.5, the earlier mentioned added sound will play, and if it's 0.6, it will probably play too, unless there's an audio with volume even closer to 0.6 added).
+--- 
+--- Note that the audio option is kept unchanged. So if the target sound truly does play at half volume relative to all other sounds by itself,
+--- it will actually now be only at 25% volume of other sounds, as it's being played at volume 0.5.
+--- If it should instead act relatively, and be played at volume 1 if the target volume matched exactly,
+--- it should be wrapped in an OptionRemappingSound object.
+---@return Sounding.OptionTargetedSound
+function sounding.newOptionTargetedSound()
+    ---@type Sounding.OptionTargetedSound
+    local sound = {
+        customData = {},
+        sounds = {},
+        optionName = "volume",
+        optionBaseValue = 1
+    }
+    return setmetatable(sound, OptionTargetedSoundMT)
 end
 
 ---@param options? Sounding.AudioOptions
 ---@param rootAudio? Sounding.Audio
 ---@return integer? soundIndex
-function NoteSampledSound:play(options, rootAudio)
-    local notes = self.notes
-    local minNote = self.minNote
-    local maxNote = self.maxNote
-    if minNote > maxNote then return nil end
+function OptionTargetedSound:play(options, rootAudio)
+    local targetValue = options and options[self.optionName] or self.optionBaseValue
+    local sound, soundIndex = self:findClosestSound(targetValue)
+    if not sound then return nil end
 
-    local targetNote = options and options.semitoneShift or 0
-    local maxSearchOffset = math.max(math.abs(minNote - targetNote), math.abs(maxNote - targetNote))
-    local searchOffset = 0
-    while searchOffset <= maxSearchOffset do
-        if notes[targetNote - searchOffset] then
-            local note = notes[targetNote - searchOffset]
-
-            options = options or {}
-            options.semitoneShift = searchOffset
-            note:play(options, rootAudio or self)
-            options.semitoneShift = targetNote
-
-            return targetNote - searchOffset
-        end
-
-        if notes[targetNote + searchOffset] then
-            local note = notes[targetNote + searchOffset]
-
-            options = options or {}
-            options.semitoneShift = -searchOffset
-            note:play(options, rootAudio or self)
-            options.semitoneShift = targetNote
-
-            return targetNote + searchOffset
-        end
-
-        searchOffset = searchOffset + 1
-    end
+    sound:play(options, rootAudio or self)
+    return soundIndex
 end
 
-function NoteSampledSound:stop()
-    local notes = self.notes
-    for _, note in pairs(notes) do
-        note:stop()
+function OptionTargetedSound:stop()
+    local sounds = self.sounds
+    for soundIndex = 1, #sounds do
+        sounds[soundIndex][1]:stop()
     end
 end
 
 ---@return boolean
-function NoteSampledSound:isPlaying()
-    local notes = self.notes
-    for _, note in pairs(notes) do
-        if note:isPlaying() then return true end
+function OptionTargetedSound:isPlaying()
+    local sounds = self.sounds
+    for soundIndex = 1, #sounds do
+        if sounds[soundIndex][1]:isPlaying() then return true end
     end
     return false
 end
 
 ---@param loop boolean
-function NoteSampledSound:setLooping(loop)
-    local notes = self.notes
-    for _, note in pairs(notes) do
-        note:setLooping(loop)
+function OptionTargetedSound:setLooping(loop)
+    local sounds = self.sounds
+    for soundIndex = 1, #sounds do
+        sounds[soundIndex][1]:setLooping(loop)
     end
 end
 
 --- Changes the options for all sounds that are currently playing
 ---@param options Sounding.AudioOptions
 ---@param rootAudio? Sounding.Audio
-function NoteSampledSound:setDynamicOptions(options, rootAudio)
-    local notes = self.notes
-    for shift, note in pairs(notes) do
-        note:setDynamicOptions(options, rootAudio or self)
+function OptionTargetedSound:setDynamicOptions(options, rootAudio)
+    local sounds = self.sounds
+    for soundIndex = 1, #sounds do
+        sounds[soundIndex][1]:setDynamicOptions(options, rootAudio or self)
     end
 end
 
 ---@param id integer
 ---@return Sounding.Audio
-function NoteSampledSound:readId(id)
-    return self.notes[id]
+function OptionTargetedSound:readId(id)
+    return self.sounds[id][1]
 end
 
 ---@return string
-function NoteSampledSound:type()
-    return "NoteSampledSound"
+function OptionTargetedSound:type()
+    return "OptionTargetedSound"
 end
 
 ---@param key string
 ---@param value any
-function NoteSampledSound:setCustomDataField(key, value)
+function OptionTargetedSound:setCustomDataField(key, value)
     self.customData[key] = value
 end
 
 ---@param key string
 ---@return any
-function NoteSampledSound:getCustomDataField(key)
+function OptionTargetedSound:getCustomDataField(key)
     return self.customData[key]
 end
 
----@return Sounding.NoteSampledSound
-function NoteSampledSound:clone()
-    local clone = sounding.newNoteSampledSound()
+---@return Sounding.OptionTargetedSound
+function OptionTargetedSound:clone()
+    local clone = sounding.newOptionTargetedSound()
 
-    local notesSelf = self.notes
-    local notesClone = clone.notes
-    for shift, note in pairs(notesSelf) do
-        notesClone[shift] = note:clone()
+    clone.optionName = self.optionName
+    clone.optionBaseValue = self.optionBaseValue
+
+    local soundsSelf = self.sounds
+    local soundsClone = clone.sounds
+    for soundIndex = 1, #soundsSelf do
+        local sound = soundsSelf[soundIndex]
+        soundsClone[soundIndex] = {sound[1]:clone(), sound[2]}
     end
 
     for key in pairs(self.customData) do
@@ -949,14 +1086,18 @@ function NoteSampledSound:clone()
     return clone
 end
 
----@return Sounding.NoteSampledSound
-function NoteSampledSound:cloneTiny()
-    local clone = sounding.newNoteSampledSound()
+---@return Sounding.OptionTargetedSound
+function OptionTargetedSound:cloneTiny()
+    local clone = sounding.newOptionTargetedSound()
 
-    local notesSelf = self.notes
-    local notesClone = clone.notes
-    for shift, note in pairs(notesSelf) do
-        notesClone[shift] = note:cloneTiny()
+    clone.optionName = self.optionName
+    clone.optionBaseValue = self.optionBaseValue
+
+    local soundsSelf = self.sounds
+    local soundsClone = clone.sounds
+    for soundIndex = 1, #soundsSelf do
+        local sound = soundsSelf[soundIndex]
+        soundsClone[soundIndex] = {sound[1]:cloneTiny(), sound[2]}
     end
 
     for key in pairs(self.customData) do
@@ -968,17 +1109,78 @@ end
 
 ----------
 
---- Registers the given sound as a note with the given semitone (0 being no shift from some anchor note, for example middle C).
---- If there is already a sound with that semitone, it will be overwritten.
+--- Configures the option that gets targeted.
+--- The `baseValue` is the value that gets searched for in the added sounds
+--- if the configured option isn't explicitly set when attempting to play the sound
+--- (this should be the neutral value, e.g. `1` for audio)
+---@param name string
+---@param baseValue number
+function OptionTargetedSound:configureOption(name, baseValue)
+    self.optionName = name
+    self.optionBaseValue = baseValue
+end
+
+--- Registers the given sound alongside its given value.
 --- 
---- The sampled sound will own and manage this sound completely,
+--- The option-targeted sound will own and manage this sound completely,
 --- so make sure to clone it first if you plan on using it elsewhere too.
----@param semitone integer
+---@param value number
 ---@param sound Sounding.Audio
-function NoteSampledSound:addNote(semitone, sound)
-    self.notes[semitone] = sound
-    self.minNote = math.min(self.minNote, semitone)
-    self.maxNote = math.max(self.maxNote, semitone)
+function OptionTargetedSound:addSound(value, sound)
+    local _, closestSoundIndex = self:findClosestSound(value)
+    if not closestSoundIndex then
+        self.sounds[1] = {sound, value}
+        return
+    end
+
+    local closestSoundPair = self.sounds[closestSoundIndex]
+
+    if closestSoundPair[2] <= value then
+        table.insert(self.sounds, closestSoundIndex + 1, {sound, value})
+    else
+        table.insert(self.sounds, closestSoundIndex, {sound, value})
+    end
+end
+
+--- Returns the sound that closest matches the target value.
+--- Returns nil if there are no sounds added.
+---@param targetValue number
+---@return Sounding.Audio? sound
+---@return integer? soundIndex
+function OptionTargetedSound:findClosestSound(targetValue)
+    local sounds = self.sounds
+    if #sounds == 0 then return nil, nil end
+
+    local indexFirst = 1
+    local indexLast = #sounds
+    while indexFirst < indexLast do
+        local index = math.floor((indexFirst + indexLast) / 2)
+        local sound = sounds[index]
+        local audio = sound[1]
+        local value = sound[2]
+
+        if value == targetValue then
+            return audio, index
+        end
+
+        if value < targetValue then
+            indexFirst = index + 1
+        else
+            indexLast = index
+        end
+    end
+
+    local closeEnoughIndexA = indexFirst
+    local closeEnoughIndexB = indexFirst - 1
+    if closeEnoughIndexB < 1 then return sounds[closeEnoughIndexA][1], closeEnoughIndexA end
+
+    local closeEnoughValueA = sounds[closeEnoughIndexA][2]
+    local closeEnoughValueB = sounds[closeEnoughIndexB][2]
+    local distanceA = math.abs(closeEnoughValueA - targetValue)
+    local distanceB = math.abs(closeEnoughValueB - targetValue)
+
+    if distanceA < distanceB then return sounds[closeEnoughIndexA][1], closeEnoughIndexA end
+    return sounds[closeEnoughIndexB][1], closeEnoughIndexB
 end
 
 -- The abstract shared Audio interface -------------------------------------------------------------
