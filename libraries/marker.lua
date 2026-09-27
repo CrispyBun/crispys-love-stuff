@@ -6,7 +6,7 @@
 --[[
 MIT License
 
-Copyright (c) 2025 Ava "CrispyBun" Špráchalů
+Copyright (c) 2025-2026 Ava "CrispyBun" Špráchalů
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -38,6 +38,7 @@ local marker = {}
 ---@class Marker.MarkedText
 ---@field x number The X coordinate of the text
 ---@field y number The Y coordinate of the text
+---@field scale number The scale of the text
 ---@field time number The current time (in seconds), relative to some unknown starting point. Used by some effects.
 ---@field textVariables table Variables which some text effects can read and display. If the variable isn't found here, the effects will then look into the root `marker.textVariables` table. You shouldn't overwrite this table completely, as that would clear necessary metatable data.
 ---@field wrapLimit number How wide the text is allowed to be before it must wrap
@@ -52,6 +53,7 @@ local marker = {}
 ---@field topLevelEffects Marker.EffectData[] Effects in this list will be added to all generated chars when `generate()` is called. They can still be turned off by the input string with an appropriate closing tag (</*>) if parsing is enabled.
 ---@field parsingEnabed boolean Whether or not effect <tags> will be parsed from the input string when `generate()` is called.
 ---@field ignoreStretchOnLastLine boolean True by default, makes alignments like "justify" look much better on paragraph ending lines.
+---@field scaleAffectsOffset boolean True by default, makes the text scale also scale any offsets applied by text effects
 ---@field updateRequested boolean If true, the text re-apply all its effects to the text on the next call to `update()` and reset this value back to `false`. May be set to true by some effects.
 ---@field layoutRequested boolean If true, the text will call `layout()` on the next call to `update()` and reset this value back to `false`. May be set to true by some effects.
 local MarkedText = {}
@@ -232,6 +234,7 @@ function marker.newMarkedText(str, font, x, y, wrapLimit, textAlign)
     local markedText = {
         x = x or 0,
         y = y or 0,
+        scale = 1,
         time = 0,
         textVariables = setmetatable({}, marker.textVariablesTextMT),
         wrapLimit = wrapLimit or math.huge,
@@ -246,6 +249,7 @@ function marker.newMarkedText(str, font, x, y, wrapLimit, textAlign)
         topLevelEffects = {},
         parsingEnabed = true,
         ignoreStretchOnLastLine = true,
+        scaleAffectsOffset = true,
         updateRequested = false,
         layoutRequested = false,
     }
@@ -283,6 +287,11 @@ end
 function MarkedText:setPosition(x, y)
     self.x = x
     self.y = y
+end
+
+---@param scale number
+function MarkedText:setScale(scale)
+    self.scale = scale
 end
 
 --- Will make the text call `layout()` on itself on the next update.
@@ -369,7 +378,7 @@ function MarkedText:draw(x, y)
     local chars = self.chars
     for charIndex = 1, #chars do
         local char = chars[charIndex]
-        char:draw(x, y)
+        char:draw(x, y, self.scale, self.scaleAffectsOffset)
     end
 end
 
@@ -398,6 +407,8 @@ function MarkedText:layout()
     local verticalAlign = self.verticalAlign
     if verticalAlign == "center" or verticalAlign == "middle" then columnShiftFactor = 0.5
     elseif verticalAlign == "end" or verticalAlign == "bottom" then columnShiftFactor = 1 end
+
+    local scale = self.scale
 
     local nextX = 0
     local nextY = 0
@@ -435,8 +446,8 @@ function MarkedText:layout()
         local charPrevious ---@type Marker.MarkedChar?
         for charIndex = lineStartCharIndex, lineEndCharIndex do
             local char = chars[charIndex]
-            local charWidth = char:getWidth()
-            local charHeight = char:getHeight(true)
+            local charWidth = char:getWidth(scale)
+            local charHeight = char:getHeight(true, scale)
             local charIsSpace = char:isSpace()
             local charIsSymbol = char:isSymbol()
 
@@ -454,7 +465,7 @@ function MarkedText:layout()
                 extraSpacingRight = extraSpacingRight + ((seenSymbols == symbolCount) and (0) or (symbolStretch/2))
             end
 
-            local kerning = charPrevious and charPrevious:getKerning(char) or 0
+            local kerning = charPrevious and charPrevious:getKerning(char, scale) or 0
             nextX = nextX + kerning
             nextX = nextX + extraSpacingLeft
 
@@ -621,16 +632,18 @@ function MarkedText:getWrap()
     local charPrevious ---@type Marker.MarkedChar?
     local wrapForcedOnNextChar = false
 
+    local scale = self.scale
+
     local charIndex = 1
     local charsLength = #chars
     while charIndex <= charsLength do
         local char = chars[charIndex]
-        local charWidth = char:getWidth()
+        local charWidth = char:getWidth(scale)
 
-        local kerning = charPrevious and charPrevious:getKerning(char) or 0
+        local kerning = charPrevious and charPrevious:getKerning(char, scale) or 0
         local charWidthKerned = charWidth + kerning
 
-        local charHeight = char:getHeight(true)
+        local charHeight = char:getHeight(true, scale)
         local charIsSpace = char:isSpace()
         local charIsSymbol = char:isSymbol()
 
@@ -683,7 +696,7 @@ function MarkedText:getWrap()
 
             -- If the wrapped char becomes invisible (if it's the only char on the line, it can't)
             if lastLineEndChar:isInvisibleInWrap() and lineIndices[#lineIndices] < lastLineEnd then
-                local lastLineEndCharWidth = lastLineEndChar:getWidth() + chars[lastLineEnd-1]:getKerning(lastLineEndChar)
+                local lastLineEndCharWidth = lastLineEndChar:getWidth(scale) + chars[lastLineEnd-1]:getKerning(lastLineEndChar, scale)
                 lastLineWidth = lastLineWidth - lastLineEndCharWidth
                 lastLineSpaceCount = lastLineSpaceCount - (lastLineEndChar:isSpace() and 1 or 0)
                 lastLineSymbolCount = lastLineSymbolCount - (lastLineEndChar:isSymbol() and 1 or 0)
@@ -691,7 +704,7 @@ function MarkedText:getWrap()
                 lastLineEndChar.disabled = true
                 lastLineEnd = lastLineEnd - 1
             else
-                lastLineHeight = math.max(lastLineHeight, lastLineEndChar:getHeight(true))
+                lastLineHeight = math.max(lastLineHeight, lastLineEndChar:getHeight(true, scale))
             end
 
             -- line start char may only be invisible if the wrap wasn't forced by an explicit newline
@@ -836,19 +849,22 @@ function marker.newMarkedChar(str, x, y, font)
     return setmetatable(markedChar, MarkedCharMT)
 end
 
+---@param scale? number
 ---@return number
-function MarkedChar:getWidth()
-    return self.font:getWidth(self.str)
+function MarkedChar:getWidth(scale)
+    return self.font:getWidth(self.str) * (scale or 1)
 end
 
 ---@param includeLineHeight? boolean
+---@param scale? number
 ---@return number
-function MarkedChar:getHeight(includeLineHeight)
-    return self.font:getHeight(includeLineHeight)
+function MarkedChar:getHeight(includeLineHeight, scale)
+    return self.font:getHeight(includeLineHeight) * (scale or 1)
 end
 
+---@param scale? number
 ---@param nextChar Marker.MarkedChar
-function MarkedChar:getKerning(nextChar)
+function MarkedChar:getKerning(nextChar, scale)
     local fontA = self.font
     local fontB = nextChar.font
     local strA = self.str
@@ -858,7 +874,7 @@ function MarkedChar:getKerning(nextChar)
     -- but it's unlikely that a situation like that would even happen (why switch the font when it looks the same).
     if fontA ~= fontB then return 0 end
 
-    return fontA:getKerning(strA, strB)
+    return fontA:getKerning(strA, strB) * (scale or 1)
 end
 
 ---@return boolean
@@ -952,20 +968,24 @@ end
 
 ---@param x? number
 ---@param y? number
-function MarkedChar:draw(x, y)
+---@param scale? number
+---@param scaleAffectsOffset? boolean
+function MarkedChar:draw(x, y, scale, scaleAffectsOffset)
     if self:isDisabled() then return end
 
     x = x or 0
     y = y or 0
+    scale = scale or 1
 
     local str = self.renderedStr or self.str
+    local offsetScale = scaleAffectsOffset and scale or 1
 
-    local drawnX = math.floor(x + self.xPlacement + self.xOffset)
-    local drawnY = math.floor(y + self.yPlacement + self.yOffset)
+    local drawnX = math.floor(x + self.xPlacement + self.xOffset * offsetScale)
+    local drawnY = math.floor(y + self.yPlacement + self.yOffset * offsetScale)
 
     local cr, cg, cb, ca = love.graphics.getColor()
     love.graphics.setColor(self.colorR, self.colorG, self.colorB, self.colorA)
-    self.font:draw(str, drawnX, drawnY)
+    self.font:draw(str, drawnX, drawnY, scale)
     love.graphics.setColor(cr, cg, cb, ca)
 end
 
@@ -1356,7 +1376,8 @@ end
 ---@param str string
 ---@param x number
 ---@param y number
-function AbstractFont:draw(str, x, y)
+---@param scale? number
+function AbstractFont:draw(str, x, y, scale)
     return
 end
 
@@ -1406,8 +1427,10 @@ end
 ---@param str string
 ---@param x number
 ---@param y number
-function LoveFont:draw(str, x, y)
-    love.graphics.print(str, self.font, x, y)
+---@param scale? number
+function LoveFont:draw(str, x, y, scale)
+    scale = scale or 1
+    love.graphics.print(str, self.font, x, y, 0, scale, scale)
 end
 
 -- Parser ------------------------------------------------------------------------------------------
